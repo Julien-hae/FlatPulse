@@ -11,8 +11,12 @@
     ],
     "python.defaultInterpreterPath": "${workspaceFolder}/.venv",
     "[python]": {
-        "editor.defaultFormatter": "ms-python.black-formatter",
+        "editor.defaultFormatter": "charliermarsh.ruff",
         "editor.formatOnSave": true,
+        "editor.codeActionsOnSave": {
+            "source.fixAll.ruff": "explicit",
+            "source.organizeImports.ruff": "explicit"
+        },
     },
-    "black-formatter.importStrategy": "fromEnvironment"
+    "ruff.importStrategy": "fromEnvironment"
 }
