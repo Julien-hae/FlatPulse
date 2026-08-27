@@ -9,8 +9,8 @@ packages = [{include = "flatpulse", from = "src"}]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "~3.12"
-numpy = "~1.26"                                     # NumPy is the fundamental package for array computing with Python.
+python = "~3.14"
+numpy = "^2.3"                                      # NumPy is the fundamental package for array computing with Python.
 
 [tool.poetry.group.dev.dependencies]
 coverage = {extras = ["toml"], version = "~7.4"}    # Code coverage measurement for Python
@@ -18,7 +18,7 @@ unittest-xml-reporting = "~3.2"                     # unittest-based test runner
 pre-commit = "~3.6"                                 # A framework for managing and maintaining multi-language pre-commit hooks.
 pre-commit-hooks = "~4.5"                           # Some out-of-the-box hooks for pre-commit.
 ruff = "^0.14.14"                                   # Extremely fast Python linter and formatter, replaces black/isort/pydocstyle/pylint
-mypy = "~1.8"                                       # Tool for static type-checking
+mypy = "^1.18"                                       # Tool for static type-checking
 
 [tool.poetry.scripts]
 entrypoint = 'flatpulse.main:cli'
@@ -31,7 +31,7 @@ build-backend = "poetry.core.masonry.api"
 # `ruff format` reformats to this width; black's default is kept so the migration
 # doesn't rewrap every existing file.
 line-length = 88
-target-version = "py312"
+target-version = "py314"
 src = ["src", "tests"]
 
 [tool.ruff.lint]
@@ -67,8 +67,8 @@ known-first-party = ["flatpulse"]
 ]
 
 [tool.mypy]
-python_version = "3.12"
-plugins = "numpy.typing.mypy_plugin"
+python_version = "3.14"
+# numpy removed numpy.typing.mypy_plugin in 2.3; the stubs are shipped inline now
 strict = true
 
 [tool.coverage.run]
