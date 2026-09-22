@@ -23,7 +23,7 @@ jobs:
     name: Format et lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: ./.github/actions/setup-python-poetry
 
@@ -41,7 +41,7 @@ jobs:
     name: Typage
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: ./.github/actions/setup-python-poetry
 
@@ -52,7 +52,7 @@ jobs:
     name: Tests et couverture
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: ./.github/actions/setup-python-poetry
 
@@ -69,7 +69,7 @@ jobs:
 
       - name: Archiver les rapports
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: test-reports
           path: |
