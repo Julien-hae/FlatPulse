@@ -27,7 +27,7 @@ jobs:
     name: CVE des dépendances
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Pas besoin d'installer le projet : on audite le lock, pas le runtime.
       - uses: ./.github/actions/setup-python-poetry
@@ -49,7 +49,7 @@ jobs:
     name: Fuite de secrets
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # gitleaks balaie l'historique, pas seulement le dernier commit.
           fetch-depth: 0
@@ -58,6 +58,6 @@ jobs:
       # FlatPulse passe un jour sous une organisation GitHub, il faudra ajouter
       # un secret GITLEAKS_LICENSE à l'environnement de ce step.
       - name: gitleaks
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
