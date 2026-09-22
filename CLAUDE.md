@@ -31,13 +31,15 @@ entre stories, spike et code sont listés en §11 de `docs/architecture.md`.
 Python 3.14, Poetry. `make` installe l'environnement et les hooks pre-commit.
 
 ```bash
-python -m unittest discover tests/   # tests
-coverage run && coverage xml         # tests + couverture (junittest.xml)
-ruff format . && ruff check src/     # format + lint
-mypy src/                            # typage strict
+make lint        # ruff format --check + ruff check
+make typecheck   # mypy --strict sur src/
+make test        # coverage run + coverage xml (junittest.xml, coverage.xml)
 ```
 
-`pre-commit` enchaîne poetry-check, ruff (format + lint), mypy et les tests.
+Ces trois cibles sont **exactement** ce que la CI exécute : `.github/workflows/ci.yml`
+les appelle, il n'y a pas de commande écrite en double dans le workflow. Ce qui
+passe en local passe en CI. `pre-commit` enchaîne poetry-check, ruff (format +
+lint), mypy et les tests.
 
 Les tests sont rangés par ce dont ils ont besoin pour tourner : `tests/unit/` (rapide,
 tout mocké), `tests/contract/` (les invariants que tout scraper doit respecter),

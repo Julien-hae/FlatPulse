@@ -1,6 +1,9 @@
-# Reproduit en CI exactement ce que `pre-commit` exécute en local, un job par
-# nature de retour : format, typage, tests. Un job rouge dit tout de suite quelle
-# étape de la Definition of Done (#81) n'est pas tenue.
+# Un job par nature de retour : format, typage, tests. Un job rouge dit tout de
+# suite quelle étape de la Definition of Done (#81) n'est pas tenue.
+#
+# Les commandes ne sont pas écrites ici : chaque job appelle la cible make
+# correspondante, la même qu'un contributeur lance en local. Une commande qui
+# change ne change qu'à un endroit, le Makefile.
 name: CI
 
 on:
@@ -30,12 +33,10 @@ jobs:
       - name: Valider pyproject.toml et poetry.lock
         run: poetry check --lock
 
-      - name: ruff format
-        run: poetry run ruff format --check --diff .
-
-      - name: ruff check
-        # --output-format=github annote directement les lignes fautives dans la PR.
-        run: poetry run ruff check --output-format=github .
+      - name: make lint
+        # RUFF_FORMAT=github annote directement les lignes fautives dans la PR ;
+        # en local la cible garde la sortie lisible de ruff.
+        run: make lint RUFF_FORMAT=github
 
   typecheck:
     name: Typage
@@ -45,8 +46,8 @@ jobs:
 
       - uses: ./.github/actions/setup-python-poetry
 
-      - name: mypy --strict
-        run: poetry run mypy src/
+      - name: make typecheck
+        run: make typecheck
 
   test:
     name: Tests et couverture
@@ -56,16 +57,16 @@ jobs:
 
       - uses: ./.github/actions/setup-python-poetry
 
-      - name: Suite de tests
+      - name: make test
         # `coverage run` reprend la command_line de pyproject.toml :
         # -m xmlrunner discover --output-file junittest.xml
-        run: poetry run coverage run
+        run: make test
 
-      - name: Rapports de couverture
+      - name: Résumé de couverture
+        # Purement présentation CI, donc hors Makefile. Tourne même si des tests
+        # ont échoué : coverage écrit .coverage quoi qu'il arrive.
         if: ${{ !cancelled() }}
-        run: |
-          poetry run coverage xml
-          poetry run coverage report --format=markdown >> "$GITHUB_STEP_SUMMARY"
+        run: poetry run coverage report --format=markdown >> "$GITHUB_STEP_SUMMARY"
 
       - name: Archiver les rapports
         if: ${{ !cancelled() }}
