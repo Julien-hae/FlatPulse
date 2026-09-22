@@ -20,7 +20,7 @@ unittest-xml-reporting = "~3.2"                     # unittest-based test runner
 pre-commit = "~3.6"                                 # A framework for managing and maintaining multi-language pre-commit hooks.
 pre-commit-hooks = "~4.5"                           # Some out-of-the-box hooks for pre-commit.
 ruff = "^0.14.14"                                   # Extremely fast Python linter and formatter, replaces black/isort/pydocstyle/pylint
-mypy = "^1.18"                                       # Tool for static type-checking
+mypy = ">=1.18,<3.0"                                       # Tool for static type-checking
 ipykernel = "^7.3.0"
 
 [tool.poetry.scripts]
