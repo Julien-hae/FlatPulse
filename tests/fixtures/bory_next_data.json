@@ -1,94 +1,110 @@
 {
-  "nodes": [
-    {
-      "slug": "70212-avenue-du-petit-lancy-27-1213-petit-lancy",
-      "name": "Avenue du Petit-Lancy 27, 1213 Petit-Lancy",
-      "rent_displayed": true,
-      "net_rent": 1600,
-      "number_rooms": 2,
-      "living_area_square_meter": 38,
-      "address_town": "Petit-Lancy",
-      "address_street": "avenue du Petit-Lancy",
-      "address_street_number": "27",
-      "address_npa": "1213",
-      "floor_number": 5,
-      "counter_media": 1,
-      "medias": {
-        "nodes": [
-          {
-            "path": "https://edit.bory.ch/app/uploads/2026/09/70212ce4d1a525a7ede63a9bfc639346677cc.jpg"
-          }
-        ]
-      }
-    },
-    {
-      "slug": "70101-geneve",
-      "name": "",
-      "rent_displayed": true,
-      "net_rent": 1750,
-      "number_rooms": 1.5,
-      "living_area_square_meter": 42,
-      "address_town": "Genève",
-      "address_street": "rue Cherbuliez",
-      "address_street_number": "7",
-      "address_npa": "1207",
-      "floor_number": 3,
-      "counter_media": 5,
-      "medias": {
-        "nodes": [
-          {
-            "path": "https://edit.bory.ch/app/uploads/2026/09/70101b59b749a35b880d6681369730322a9cc.jpg"
-          },
-          {
-            "path": "https://edit.bory.ch/app/uploads/2026/09/70101b0d7f35e1738724795de77d367a40386.jpg"
-          },
-          {
-            "path": "https://edit.bory.ch/app/uploads/2026/09/701019198b6d8599c66b0a2bdbf3c223c2f21.jpg"
-          }
-        ]
-      }
-    },
-    {
-      "slug": "69837-joli-studio-meuble",
-      "name": "Joli studio meublé",
-      "rent_displayed": true,
-      "net_rent": 1900,
-      "number_rooms": 1,
-      "living_area_square_meter": 45,
-      "address_town": "Genève",
-      "address_street": "rue Chausse-Coq",
-      "address_street_number": "3",
-      "address_npa": "1204",
-      "floor_number": 5,
-      "counter_media": 1,
-      "medias": {
-        "nodes": [
-          {
-            "path": "https://edit.bory.ch/app/uploads/2026/09/69837dc2f88501d8bdec8bdd535230aff53fa-1.jpg"
-          }
-        ]
-      }
-    },
-    {
-      "slug": "70020-rue-guye-3-1203-geneve",
-      "name": "Rue Guye 3, 1203 Genève",
-      "rent_displayed": true,
-      "net_rent": 1900,
-      "number_rooms": 3,
-      "living_area_square_meter": 51,
-      "address_town": "Genève",
-      "address_street": "rue Guye",
-      "address_street_number": "3",
-      "address_npa": "1203",
-      "floor_number": 2,
-      "counter_media": 1,
-      "medias": {
-        "nodes": [
-          {
-            "path": "https://edit.bory.ch/app/uploads/2026/09/7002095d3c9bea382aca2dec1c1987cc4b546-1.jpg"
-          }
-        ]
-      }
+ "properties": {
+  "edges": [
+   {
+    "node": {
+     "slug": "70212-avenue-du-petit-lancy-27-1213-petit-lancy",
+     "name": "Avenue du Petit-Lancy 27, 1213 Petit-Lancy",
+     "rent_displayed": true,
+     "net_rent": 1600,
+     "number_rooms": 2,
+     "living_area_square_meter": 38,
+     "address_town": "Petit-Lancy",
+     "address_street": "avenue du Petit-Lancy",
+     "address_street_number": "27",
+     "address_npa": "1213",
+     "floor_number": 5,
+     "counter_media": 1,
+     "medias": {
+      "nodes": [
+       {
+        "path": "https://edit.bory.ch/app/uploads/2026/09/70212ce4d1a525a7ede63a9bfc639346677cc.jpg"
+       }
+      ]
+     }
     }
-  ]
+   },
+   {
+    "node": {
+     "slug": "70101-geneve",
+     "name": "",
+     "rent_displayed": true,
+     "net_rent": 1750,
+     "number_rooms": 1.5,
+     "living_area_square_meter": 42,
+     "address_town": "Genève",
+     "address_street": "rue Cherbuliez",
+     "address_street_number": "7",
+     "address_npa": "1207",
+     "floor_number": 3,
+     "counter_media": 5,
+     "medias": {
+      "nodes": [
+       {
+        "path": "https://edit.bory.ch/app/uploads/2026/09/70101b59b749a35b880d6681369730322a9cc.jpg"
+       },
+       {
+        "path": "https://edit.bory.ch/app/uploads/2026/09/70101b0d7f35e1738724795de77d367a40386.jpg"
+       },
+       {
+        "path": "https://edit.bory.ch/app/uploads/2026/09/701019198b6d8599c66b0a2bdbf3c223c2f21.jpg"
+       }
+      ]
+     }
+    }
+   },
+   {
+    "node": {
+     "slug": "69837-joli-studio-meuble",
+     "name": "Joli studio meublé",
+     "rent_displayed": true,
+     "net_rent": 1900,
+     "number_rooms": 1,
+     "living_area_square_meter": 45,
+     "address_town": "Genève",
+     "address_street": "rue Chausse-Coq",
+     "address_street_number": "3",
+     "address_npa": "1204",
+     "floor_number": 5,
+     "counter_media": 1,
+     "medias": {
+      "nodes": [
+       {
+        "path": "https://edit.bory.ch/app/uploads/2026/09/69837dc2f88501d8bdec8bdd535230aff53fa-1.jpg"
+       }
+      ]
+     }
+    }
+   },
+   {
+    "node": {
+     "slug": "70020-rue-guye-3-1203-geneve",
+     "name": "Rue Guye 3, 1203 Genève",
+     "rent_displayed": true,
+     "net_rent": 1900,
+     "number_rooms": 3,
+     "living_area_square_meter": 51,
+     "address_town": "Genève",
+     "address_street": "rue Guye",
+     "address_street_number": "3",
+     "address_npa": "1203",
+     "floor_number": 2,
+     "counter_media": 1,
+     "medias": {
+      "nodes": [
+       {
+        "path": "https://edit.bory.ch/app/uploads/2026/09/7002095d3c9bea382aca2dec1c1987cc4b546-1.jpg"
+       }
+      ]
+     }
+    }
+   }
+  ],
+  "pageInfo": {
+   "hasNextPage": true
+  }
+ },
+ "counter": {
+  "amount": 28
+ }
 }

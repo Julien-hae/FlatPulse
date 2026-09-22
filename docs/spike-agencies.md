@@ -7,6 +7,12 @@ Les volumes sont des **fiches distinctes**, pagination suivie et dédupliquée �
 cartes d'une page. La colonne Genève ne compte que le canton, quand la source permet de
 le distinguer.
 
+\* Zimmo : la mesure du 22.09.2026 07:29 UTC (1 fiche) est invalidée par un bug de
+dédoublonnage (toutes les fiches partagent le même chemin, seule `?ref=` les distingue —
+corrigé dans le notebook, `count.keep_query`) et un sélecteur `conteneur` erroné qui ne
+matchait rien sur le site réel (corrigé également). La fixture, elle, contient bien 4
+fiches distinctes. À recalculer au prochain passage du notebook.
+
 | Régie | Statut | Accès | Pagination | Fiches | Genève | Scraper | Vérifié |
 |---|---|---|---|---|---|---|---|
 | Naef Immobilier | MVP phase 1 | `GET naef.ch/wp-admin/admin-ajax.php?action=get_all_props&type=Location` | aucune — tout le parc en un GET | 355 | 58 | **HttpScraper (JSON)** | HTTP 200 |
@@ -17,7 +23,7 @@ le distinguer.
 | Moser Vernet & Cie | candidate phase 2 | `GET moservernet.ch/louer/` | aucune — 152 cartes, catalogue entier en une page | 150 | — | **HttpScraper** | HTTP 200 |
 | Bernard Nicod | candidate phase 2 | `GET bernard-nicod.ch/api/search-projects-list` | dans la réponse JSON | 17 | — | **HttpScraper (JSON enveloppant du HTML)** | HTTP 200 |
 | Bordier & Schmidhauser | candidate phase 2 | `GET bordier-schmidhauser.ch/location/` | à confirmer | 46 | — | **HttpScraper** | HTTP 200 |
-| Zimmo | catalogue | `GET zimmo.ch/rent.html?search-state-ge=on` | à confirmer | 1 | — | **HttpScraper** | HTTP 200 |
+| Zimmo | catalogue | `GET zimmo.ch/rent.html?search-state-ge=on` | à confirmer | ≥4* | — | **HttpScraper** | HTTP 200 |
 | Gerofinance-Régie du Rhône | catalogue | `GET gerofinance.ch/p3157-alouer.html?type[]=…` | à confirmer | 11 | — | **HttpScraper** | HTTP 200 |
 | Pilet & Renaud | à trancher | `endpoint AJAX assemblé en JavaScript — non identifié` | — | — | — | **à trancher** | non vérifiable |
 | CPEG | à trancher | `iframe → immobilier.cpeg.ch (Blazor + portail_api)` | — | — | — | **à trancher** | non vérifiable |
@@ -282,7 +288,8 @@ le distinguer.
 - Pagination : à confirmer
 - Scraper : **HttpScraper**
 - Débit : à mesurer
-- Volume : 1 fiches distinctes — relevé le 22.09.2026 07:29 UTC
+- ⚠️ Volume : 1 fiches distinctes — relevé le 22.09.2026 07:29 UTC, **invalidé** (voir note
+  en tête de document) ; la fixture en contient 4 distinctes
 - Flux : +0 depuis 22.09.2026 07:25
 - Fixture : `tests/fixtures/zimmo_listing.html` (HTML)
 
@@ -290,14 +297,20 @@ le distinguer.
 
 | Champ | Sélecteur |
 |---|---|
-| conteneur | `div.objects-list div.item` |
-| lien | `div.objects-list div.item a::attr(href)` |
-| image | `div.objects-list div.item img::attr(src)` |
+| conteneur | `div.cell.block.item` |
+| lien | `div.cell.block.item a.title::attr(href)` |
+| image | `div.cell.block.item div.flickity-carousel-cell-block img::attr(src)` |
 
 ### Pièges
 
 - /api/v1/map/ existe dans le code mais répond 404 en GET.
-- div.item seul attrape autre chose que des annonces : ancrer sur div.objects-list.
+- Pas de `div.objects-list` dans le HTML réel : le conteneur est `div.cell.block.item` —
+  un bare `div.item` attrape aussi les cellules d'icônes (surface, prix…) qui portent la
+  même classe.
+- Toutes les fiches partagent le même chemin `fiche-location.html` : seule la query
+  string `?ref=…` les distingue. Le dédoublonnage générique (qui tronque la query
+  string) réduisait le volume mesuré à 1 fiche au lieu de 4 — `count.keep_query=True`
+  corrige ça pour cette source.
 
 ## Gerofinance-Régie du Rhône (`gerofinance`)
 

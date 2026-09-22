@@ -1,16 +1,5 @@
 {
-  "items": [
-    {
-      "url": "/fr/projets/au-mont-dehden-la-tour-de-peilz-61"
-    },
-    {
-      "url": "/fr/projets/borde-71-128"
-    },
-    {
-      "url": "/fr/projets/boulevard-de-grancy-1-3-5-123"
-    },
-    {
-      "url": "/fr/projets/cerisiers-21c-119"
-    }
-  ]
+ "html": "<a href=\"/fr/projets/au-mont-dehden-la-tour-de-peilz-61\">Voir le projet</a>\n<a href=\"/fr/projets/borde-71-128\">Voir le projet</a>\n<a href=\"/fr/projets/boulevard-de-grancy-1-3-5-123\">Voir le projet</a>\n<a href=\"/fr/projets/cerisiers-21c-119\">Voir le projet</a>",
+ "total": 17,
+ "visible": 17
 }
