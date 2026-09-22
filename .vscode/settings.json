@@ -18,5 +18,7 @@
             "source.organizeImports.ruff": "explicit"
         },
     },
-    "ruff.importStrategy": "fromEnvironment"
+    "ruff.importStrategy": "fromEnvironment",
+    "python-envs.defaultEnvManager": "ms-python.python:poetry",
+    "python-envs.defaultPackageManager": "ms-python.python:poetry"
 }
