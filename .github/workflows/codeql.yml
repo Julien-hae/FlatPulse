@@ -1,0 +1,43 @@
+# Analyse statique GitHub CodeQL. Gratuite sur un dépôt public ; les résultats
+# atterrissent dans l'onglet Security > Code scanning, pas en échec de PR, sauf
+# pour les alertes que GitHub classe bloquantes.
+name: CodeQL
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  schedule:
+    # Lundi 03:17 UTC : rattrape les règles ajoutées depuis le dernier push.
+    - cron: "17 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: Analyser Python
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      security-events: write
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Initialiser CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: python
+          build-mode: none
+          # security-and-quality plutôt que le suite par défaut : on veut aussi
+          # les règles de qualité, pas seulement les failles.
+          queries: security-and-quality
+
+      - name: Analyser
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:python"

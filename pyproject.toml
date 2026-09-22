@@ -49,6 +49,7 @@ select = [
     "SIM",  # flake8-simplify
     "PL",   # pylint
     "RUF",  # ruff-specific rules
+    "S",    # flake8-bandit, les règles de sécurité de bandit sans un outil de plus
 ]
 
 [tool.ruff.lint.pycodestyle]
@@ -67,6 +68,7 @@ known-first-party = ["flatpulse"]
 "tests/**" = [
     "D",        # tests don't need docstrings, as pydocstyle's match-dir used to skip them
     "PLR2004",  # magic values are fine in assertions
+    "S101",     # bare asserts are what a test is made of
 ]
 
 [tool.mypy]

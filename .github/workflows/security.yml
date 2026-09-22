@@ -1,0 +1,57 @@
+# Les deux contrôles que CodeQL ne fait pas : les CVE des dépendances
+# verrouillées, et les secrets commités. Cf. « Points d'attention en review »
+# dans CLAUDE.md — aucune clé Groq, Gemini, TELEGRAM_BOT_TOKEN ou DATABASE_URL
+# en clair.
+name: Security
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  schedule:
+    # Lundi 04:23 UTC : une CVE publiée cette semaine doit se voir sans push.
+    - cron: "23 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  dependency-audit:
+    name: CVE des dépendances
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Pas besoin d'installer le projet : on audite le lock, pas le runtime.
+      - uses: ./.github/actions/setup-python-poetry
+        with:
+          install: "false"
+
+      - name: Exporter le lock en requirements épinglés
+        run: |
+          pipx inject poetry poetry-plugin-export
+          poetry export --format=requirements.txt --output=requirements.txt \
+            --with=dev --without-hashes
+
+      - name: Auditer via la PyPI Advisory Database
+        # --no-deps : l'export Poetry est déjà entièrement épinglé, transitives
+        # comprises, donc aucune résolution à refaire.
+        run: pipx run pip-audit --requirement requirements.txt --no-deps --progress-spinner=off
+
+  secret-scan:
+    name: Fuite de secrets
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # gitleaks balaie l'historique, pas seulement le dernier commit.
+          fetch-depth: 0
+
+      # Gratuit pour un dépôt public appartenant à un compte personnel. Si
+      # FlatPulse passe un jour sous une organisation GitHub, il faudra ajouter
+      # un secret GITLEAKS_LICENSE à l'environnement de ce step.
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

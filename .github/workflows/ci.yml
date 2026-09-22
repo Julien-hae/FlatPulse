@@ -1,0 +1,99 @@
+# Reproduit en CI exactement ce que `pre-commit` exécute en local, un job par
+# nature de retour : format, typage, tests. Un job rouge dit tout de suite quelle
+# étape de la Definition of Done (#81) n'est pas tenue.
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Un push de plus sur une PR annule la run précédente ; sur master on laisse
+# chaque run aller au bout pour garder un historique de santé complet.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  lint:
+    name: Format et lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-python-poetry
+
+      - name: Valider pyproject.toml et poetry.lock
+        run: poetry check --lock
+
+      - name: ruff format
+        run: poetry run ruff format --check --diff .
+
+      - name: ruff check
+        # --output-format=github annote directement les lignes fautives dans la PR.
+        run: poetry run ruff check --output-format=github .
+
+  typecheck:
+    name: Typage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-python-poetry
+
+      - name: mypy --strict
+        run: poetry run mypy src/
+
+  test:
+    name: Tests et couverture
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-python-poetry
+
+      - name: Suite de tests
+        # `coverage run` reprend la command_line de pyproject.toml :
+        # -m xmlrunner discover --output-file junittest.xml
+        run: poetry run coverage run
+
+      - name: Rapports de couverture
+        if: ${{ !cancelled() }}
+        run: |
+          poetry run coverage xml
+          poetry run coverage report --format=markdown >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Archiver les rapports
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: |
+            junittest.xml
+            coverage.xml
+          if-no-files-found: warn
+          retention-days: 14
+
+  pr-title:
+    name: Titre de PR conventionnel
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Vérifier le préfixe Conventional Commits
+        env:
+          # Passé par l'environnement, jamais interpolé dans le script : un titre
+          # de PR est une entrée non fiable.
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          set -euo pipefail
+          pattern='^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\([a-z0-9._/-]+\))?!?: .+'
+          if ! printf '%s' "$PR_TITLE" | grep -Eq "$pattern"; then
+            echo "::error::Titre de PR non conventionnel : '$PR_TITLE'"
+            echo "Attendu : type(scope): description — ex. feat(scraping): implement NaefScraper"
+            exit 1
+          fi
+          echo "Titre accepté : $PR_TITLE"

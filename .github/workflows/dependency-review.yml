@@ -1,0 +1,26 @@
+# Sur chaque PR, compare les dépendances ajoutées à la base d'avis GitHub et
+# refuse une licence incompatible avec le MIT du projet.
+name: Dependency review
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  review:
+    name: Revue des dépendances
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
+          # Copyleft fort : incompatible avec la distribution MIT de FlatPulse.
+          deny-licenses: AGPL-3.0, AGPL-3.0-only, AGPL-3.0-or-later, GPL-3.0, GPL-3.0-only, GPL-3.0-or-later
+          comment-summary-in-pr: on-failure
