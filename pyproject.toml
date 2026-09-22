@@ -11,6 +11,8 @@ readme = "README.md"
 [tool.poetry.dependencies]
 python = "~3.14"
 numpy = "^2.3"                                      # NumPy is the fundamental package for array computing with Python.
+httpx = "^0.28.1"
+parsel = "^1.11.0"
 
 [tool.poetry.group.dev.dependencies]
 coverage = {extras = ["toml"], version = "~7.4"}    # Code coverage measurement for Python
@@ -19,6 +21,7 @@ pre-commit = "~3.6"                                 # A framework for managing a
 pre-commit-hooks = "~4.5"                           # Some out-of-the-box hooks for pre-commit.
 ruff = "^0.14.14"                                   # Extremely fast Python linter and formatter, replaces black/isort/pydocstyle/pylint
 mypy = "^1.18"                                       # Tool for static type-checking
+ipykernel = "^7.3.0"
 
 [tool.poetry.scripts]
 entrypoint = 'flatpulse.main:cli'

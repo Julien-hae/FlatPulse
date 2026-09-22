@@ -1,0 +1,112 @@
+{
+  "properties": [
+    {
+      "id": "154224",
+      "slug": "bureaux-denv-100-m2-au-1er-etage-398039811213",
+      "uri": "louer/bureau/bureaux-denv-100-m2-au-1er-etage-398039811213",
+      "images": [
+        "https://admin.rosset.ch/uploads/t/_AUTOxAUTO_crop_center-center_none/154223/b65a4db7169c8555a440714731834933ea1d4373_1280x1280_meet-o-ww18930.webp"
+      ],
+      "location": "Bureaux d'env. 100 m² au 1er étage",
+      "description": "Genève, Rue de la Servette 61",
+      "price": "CHF 3’830/mois (+ CHF 140 charges)",
+      "subtitle": "Libre",
+      "surface": "100.2 m2",
+      "rooms": "1 p.",
+      "availabilityDate": "01.12.2026",
+      "href": "bureaux-denv-100-m2-au-1er-etage-398039811213",
+      "address": "Genève, 1202, Genève, Rue de la Servette 61",
+      "canton": "Genève",
+      "city": "Genève",
+      "standing": false,
+      "priceRaw": 3830,
+      "roomsRaw": 1,
+      "propertyType": "bureau",
+      "showNew": false,
+      "badge": null,
+      "lat": 46.211625,
+      "lng": 6.133407
+    },
+    {
+      "id": "154144",
+      "slug": "appartement-en-duplex-de-3-pieces-au-2eme-etage-de-80-m2-301114-000030",
+      "uri": "louer/appartement/appartement-en-duplex-de-3-pieces-au-2eme-etage-de-80-m2-301114-000030",
+      "images": [
+        "https://admin.rosset.ch/uploads/t/_AUTOxAUTO_crop_center-center_none/154143/301114_000030_01.webp"
+      ],
+      "location": "Appartement en duplex de 3 pièces au 2ème étage de 80 m2",
+      "description": "Puidoux, Chemin de Publoz 36",
+      "price": "CHF 1’850/mois (+ CHF 175 charges)",
+      "subtitle": "Libre",
+      "surface": "80 m2",
+      "rooms": "3 p.",
+      "availabilityDate": "15-11-2026",
+      "href": "appartement-en-duplex-de-3-pieces-au-2eme-etage-de-80-m2-301114-000030",
+      "address": "Puidoux, 1070, Vaud, Chemin de Publoz 36",
+      "canton": "Vaud",
+      "city": "Puidoux",
+      "standing": false,
+      "priceRaw": 1850,
+      "roomsRaw": 3,
+      "propertyType": "appartement",
+      "showNew": false,
+      "badge": null,
+      "lat": 46.493679,
+      "lng": 6.77079
+    },
+    {
+      "id": "154062",
+      "slug": "appartement-de-45-pieces-au-2eme-etage-situe-dans-un-bel-immeuble-dans-le-quartier-de-florissant-10791-000022",
+      "uri": "louer/appartement/appartement-de-45-pieces-au-2eme-etage-situe-dans-un-bel-immeuble-dans-le-quartier-de-florissant-10791-000022",
+      "images": [
+        "https://admin.rosset.ch/uploads/t/_AUTOxAUTO_crop_center-center_none/154061/010791_000000_01.webp"
+      ],
+      "location": "Appartement de 4.5 pièces au 2ème étage situé dans un bel immeuble dans le quartier de Florissant.",
+      "description": "Genève, Rue Crespin 16",
+      "price": "CHF 3’400/mois (+ CHF 227 charges)",
+      "subtitle": "Libre",
+      "surface": "95 m2",
+      "rooms": "4.5 p.",
+      "availabilityDate": "01-10-2026",
+      "href": "appartement-de-45-pieces-au-2eme-etage-situe-dans-un-bel-immeuble-dans-le-quartier-de-florissant-10791-000022",
+      "address": "Genève, 1206, Genève, Rue Crespin 16",
+      "canton": "Genève",
+      "city": "Genève",
+      "standing": false,
+      "priceRaw": 3400,
+      "roomsRaw": 4.5,
+      "propertyType": "appartement",
+      "showNew": false,
+      "badge": null,
+      "lat": 46.194816,
+      "lng": 6.159424
+    },
+    {
+      "id": "153838",
+      "slug": "308272-000053-308272-000053",
+      "uri": "louer/appartement/308272-000053-308272-000053",
+      "images": [
+        "https://admin.rosset.ch/uploads/t/_AUTOxAUTO_crop_center-center_none/153837/308272_000053_01.webp"
+      ],
+      "location": "308272 000053",
+      "description": "Renens VD, Rue du Bugnon 53",
+      "price": "CHF 790/mois (+ CHF 130 charges)",
+      "subtitle": "Libre",
+      "surface": "26 m2",
+      "rooms": "1 p.",
+      "availabilityDate": "01-08-2026",
+      "href": "308272-000053-308272-000053",
+      "address": "Renens VD, 1020, Vaud, Rue du Bugnon 53",
+      "canton": "Vaud",
+      "city": "Renens VD",
+      "standing": false,
+      "priceRaw": 790,
+      "roomsRaw": 1,
+      "propertyType": "appartement",
+      "showNew": false,
+      "badge": null,
+      "lat": 46.539289,
+      "lng": 6.595873
+    }
+  ]
+}
