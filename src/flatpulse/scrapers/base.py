@@ -21,7 +21,7 @@ OPTIONAL_FIELDS = (
     "images",
 )
 
-_PRICE_PATTERN = re.compile(r"[\d']+(?:\.\d+)?")
+_PRICE_PATTERN = re.compile(r"\d[\d']*(?:\.\d+)?")
 
 
 class AbstractScraper(ABC):
@@ -92,7 +92,7 @@ class HttpScraper(AbstractScraper):
         return listing
 
     @staticmethod
-    def _fingerprint(external_url: str, title: str, price_chf: str) -> str:
+    def _fingerprint(external_url: str, title: str, price_chf: str | None) -> str:
         """Compute a unique fingerprint for a listing based on its URL, title, and price."""
         fingerprint_source = f"{external_url}|{title}|{price_chf}"
         return hashlib.sha256(fingerprint_source.encode()).hexdigest()

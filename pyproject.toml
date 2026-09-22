@@ -13,7 +13,6 @@ python = "~3.14"
 numpy = "^2.3"                                      # NumPy is the fundamental package for array computing with Python.
 httpx = "^0.28.1"
 parsel = "^1.11.0"
-bs4 = "^0.0.2"
 
 [tool.poetry.group.dev.dependencies]
 coverage = {extras = ["toml"], version = "~7.4"}    # Code coverage measurement for Python
