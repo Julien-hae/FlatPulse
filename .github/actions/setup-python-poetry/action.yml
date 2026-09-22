@@ -1,0 +1,46 @@
+name: Set up Python and Poetry
+description: >-
+  Installe la version de Python épinglée dans .python-version, Poetry, et — sauf
+  si on le désactive — les dépendances verrouillées par poetry.lock dans un
+  virtualenv .venv local au workspace.
+
+inputs:
+  poetry-version:
+    description: Version de Poetry à installer.
+    required: false
+    default: "2.3.3"
+  install:
+    description: >-
+      "true" pour installer les dépendances verrouillées, "false" pour n'avoir
+      que Poetry (utile aux jobs qui lisent le lock sans exécuter le code).
+    required: false
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    - name: Installer Python
+      id: python
+      uses: actions/setup-python@v5
+      with:
+        python-version-file: .python-version
+
+    - name: Installer Poetry
+      shell: bash
+      run: pipx install --force "poetry==${{ inputs.poetry-version }}"
+
+    - name: Garder le virtualenv dans le workspace
+      shell: bash
+      run: poetry config virtualenvs.in-project true
+
+    - name: Restaurer le virtualenv en cache
+      if: inputs.install == 'true'
+      uses: actions/cache@v4
+      with:
+        path: .venv
+        key: venv-${{ runner.os }}-py${{ steps.python.outputs.python-version }}-${{ hashFiles('poetry.lock') }}
+
+    - name: Installer les dépendances verrouillées
+      if: inputs.install == 'true'
+      shell: bash
+      run: poetry install --no-interaction

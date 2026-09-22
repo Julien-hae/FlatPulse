@@ -153,6 +153,8 @@ target
 ########################################################
 pylintout
 sonar_report.json
+# export jetable du lock, produit par le job d'audit CVE
+requirements.txt
 mlruns/
 .DS_Store
 out.csv
