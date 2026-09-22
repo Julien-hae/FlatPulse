@@ -8,6 +8,10 @@ Side project, ~5 h/semaine, hébergé sur un VPS Infomaniak à ~CHF 7/mois. Le s
 rentabilité est d'un client. Toute solution qui coûte cher en temps ou en argent est
 hors sujet.
 
+**Le MVP couvre le canton de Genève uniquement.** Les régies scrapées sont romandes ;
+une extension alémanique demanderait son propre spike. Utiliser des villes genevoises
+dans les exemples et les fixtures, pas Zürich.
+
 ## Où est la vérité
 
 | Question | Fichier |
@@ -34,6 +38,12 @@ mypy src/                            # typage strict
 ```
 
 `pre-commit` enchaîne poetry-check, ruff (format + lint), mypy et les tests.
+
+Les tests sont rangés par ce dont ils ont besoin pour tourner : `tests/unit/` (rapide,
+tout mocké), `tests/contract/` (les invariants que tout scraper doit respecter),
+`tests/integration/` (a besoin d'un vrai PostgreSQL ou du réseau), `tests/fixtures/`
+(données figées). Pas de dossier `regression/` : un test né d'un bug est un test
+unitaire, il va dans `unit/` à côté du code qu'il couvre.
 
 ## Règles non négociables
 

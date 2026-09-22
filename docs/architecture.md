@@ -32,6 +32,12 @@
                     Prometheus + Grafana (observabilité)
 ```
 
+**Périmètre du MVP : le canton de Genève uniquement.** Les 13 régies analysées sont
+romandes, et les volumes du spike sont comptés à Genève. Une extension vers Zurich ou le
+reste de la Suisse alémanique demanderait son propre spike (parc de régies, formats
+allemands, sites Immobilien) — ce n'est pas au programme pour l'instant. Les exemples de
+profils utilisateurs doivent donc utiliser des villes genevoises, pas Zürich.
+
 L'avantage concurrentiel tient en une phrase : **on va chercher l'annonce sur le site de
 la régie, pas sur un portail.** Les régies publient chez elles d'abord et syndiquent vers
 Homegate/ImmoScout avec 15 min à plusieurs heures de retard. On ne scrape donc aucun
@@ -419,7 +425,7 @@ sur erreur.
 `unittest` uniquement. Lancement : `python -m unittest discover tests/`, ou
 `coverage run` (configuré dans `pyproject.toml` pour produire `junittest.xml`).
 
-Arborescence visée par les stories :
+Arborescence retenue — celle des stories :
 
 ```
 tests/
@@ -430,6 +436,23 @@ tests/
   integration/   test_pipeline.py
   fixtures/      HTML et JSON figés, une par régie
 ```
+
+Le découpage sépare les tests **par ce dont ils ont besoin pour tourner**, pas par la
+raison qui les a fait naître :
+
+- `unit/` — rapide, tout est mocké, aucune I/O. C'est ce qu'on lance à chaque
+  sauvegarde et dans le hook pre-commit.
+- `contract/` — les invariants que *tout* scraper doit respecter, définis une fois et
+  hérités. C'est un concept distinct d'un test unitaire, pas un dossier de rangement.
+- `integration/` — ce qui a besoin d'un vrai PostgreSQL, du réseau ou d'un
+  `docker compose up`. Aujourd'hui `test_pipeline.py` est encore entièrement mocké, mais
+  c'est là que les tests lents iront, et c'est ce qui rend le dossier utile : pouvoir
+  lancer tout sauf eux.
+
+Pas de dossier `regression/`. Un test de régression est un test unitaire ordinaire qui
+se trouve être né d'un bug ; le classer par son origine plutôt que par son coût
+d'exécution casse la seule séparation qui sert vraiment, « rapide » contre « lent ». Il
+va dans `unit/`, à côté du code qu'il couvre.
 
 **`ScraperContractMixin`** (#48) est hérité par le test de chaque scraper et vérifie
 quatre invariants sans duplication : retour `list`, champs requis non vides
@@ -522,10 +545,10 @@ hébergées en Suisse, suppression via `/delete` dans le bot.
 Points où les stories, le spike et le code divergent aujourd'hui. À arbitrer avant
 d'implémenter les stories concernées.
 
-1. **Arborescence des tests.** Les stories visent `tests/unit/`, `tests/contract/`,
-   `tests/integration/`. Le repo, généré par CookieBlueprint, a `tests/flatpulse/`.
-   Décider laquelle gagne et aligner l'autre — les commandes `python -m unittest
-   tests.unit.test_x` des stories en dépendent.
+1. **Migration de l'arborescence des tests.** Le découpage retenu est celui des stories
+   (§8). Le repo a encore `tests/flatpulse/`, hérité de CookieBlueprint, avec les tests
+   du scaffold `greeter`/`main`. À migrer vers `tests/unit/` — c'est un prérequis des
+   commandes `python -m unittest tests.unit.test_x` que les stories donnent.
 2. **Naef : HTML ou JSON ?** La story #43 parle d'une fixture `naef_listing.html` et de
    sélecteurs CSS. Le spike a établi que Naef est un endpoint JSON et la fixture livrée
    est `tests/fixtures/naef_location.json`. La story est à corriger.
@@ -534,9 +557,11 @@ d'implémenter les stories concernées.
    régie n'en a besoin, et que la seule bloquée (Grange) l'est par une empreinte TLS
    qu'un navigateur headless ne résout pas non plus. `BrowserScraper` relève donc de
    YAGNI tant qu'aucune source ne le justifie.
-5. **Genève vs Zürich.** Les 13 régies du spike sont romandes (Genève/Vaud), mais les
-   exemples de profils dans les stories (#54, #58) utilisent Zürich. Le MVP couvre-t-il
-   Genève seulement ? Si oui, aligner les exemples ; sinon, un spike alémanique manque.
+5. **Exemples zurichois dans les stories.** Le MVP couvre Genève uniquement (§1), mais
+   les exemples de profils dans #54 et #58 utilisent Zürich, et #54 va jusqu'à tester
+   qu'une annonce genevoise est *rejetée* pour un profil zurichois. Les tests restent
+   valides — c'est le hard filter ville qui est vérifié, peu importe les villes — mais
+   les exemples gagneraient à être réécrits avec des communes genevoises.
 6. **Version de Python.** `pyproject.toml` impose `~3.14`, la story #66 installe
    `python3.12` sur le VPS. Aligner sur 3.14.
 7. **Dépendances manquantes.** `pyproject.toml` ne déclare aujourd'hui que `numpy`,
