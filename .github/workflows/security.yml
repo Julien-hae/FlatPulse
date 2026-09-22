@@ -2,6 +2,12 @@
 # verrouillées, et les secrets commités. Cf. « Points d'attention en review »
 # dans CLAUDE.md — aucune clé Groq, Gemini, TELEGRAM_BOT_TOKEN ou DATABASE_URL
 # en clair.
+#
+# Pas de codeql.yml ici : le dépôt utilise le « default setup » de GitHub, et
+# GitHub refuse le SARIF d'un workflow tant que celui-ci est actif (« CodeQL
+# analyses from advanced configurations cannot be processed when the default
+# setup is enabled »). La suite de requêtes se règle dans
+# Settings > Code security > Code scanning, pas dans un fichier.
 name: Security
 
 on:

@@ -5,7 +5,6 @@
 > Alertes immobilières en temps réel pour le marché suisse — Plus rapide que les portails, plus intelligent que Comparis, 10x moins cher que MieterPlus.
 
 [![CI](https://github.com/Julien-hae/FlatPulse/actions/workflows/ci.yml/badge.svg)](https://github.com/Julien-hae/FlatPulse/actions/workflows/ci.yml)
-[![CodeQL](https://github.com/Julien-hae/FlatPulse/actions/workflows/codeql.yml/badge.svg)](https://github.com/Julien-hae/FlatPulse/actions/workflows/codeql.yml)
 [![Security](https://github.com/Julien-hae/FlatPulse/actions/workflows/security.yml/badge.svg)](https://github.com/Julien-hae/FlatPulse/actions/workflows/security.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
