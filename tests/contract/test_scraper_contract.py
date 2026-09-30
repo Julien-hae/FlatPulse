@@ -14,8 +14,6 @@ FIXTURES_DIR = Path(__file__).parent.parent / "fixtures"
 
 
 if TYPE_CHECKING:
-    # Type checkers see a TestCase (so `self.assert*` resolves); at runtime the mixin
-    # stays a plain class, otherwise unittest would collect and run it on its own.
     _MixinBase = unittest.TestCase
 else:
     _MixinBase = object
@@ -133,6 +131,7 @@ class TestContractsDetectViolations(unittest.TestCase):
     }
 
     def test_each_contract_fails_on_its_violation(self) -> None:
+        """Check that each contract test fails when the scraper is broken in the right way."""
         for contract, flaws in self.FLAWS.items():
             for flaw in flaws:
                 with self.subTest(contract=contract, flaw=flaw):

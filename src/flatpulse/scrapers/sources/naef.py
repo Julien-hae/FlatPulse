@@ -26,7 +26,6 @@ class NaefScraper(HttpScraper):
 
     def parse_listing(self, node: Selector) -> dict[str, Any]:
         """Map a Naef property to the normalised listing fields."""
-        # parsel types `.get()` as `str | None`, but `@` on a JSON node yields the dict.
         prop = cast("dict[str, Any]", node.jmespath("@").get())
         return {
             "external_id": prop["no_dossier"],
