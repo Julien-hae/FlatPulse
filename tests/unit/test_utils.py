@@ -2,6 +2,7 @@
 
 import os
 import unittest
+from unittest.mock import patch
 
 from flatpulse.common.utils import parse_rooms, parse_swiss_price
 from flatpulse.config import REQUIRED_VARS, Config
@@ -15,6 +16,7 @@ class TestUtils(unittest.TestCase):
         self.prices_test_set = {
             "CHF 1'850.–/mois": 185000,  # noqa: RUF001
             "CHF 2'400": 240000,
+            "CHF 1'234.56": 123456,
             "Fr. 950.—": 95000,
             "Prix sur demande": None,
             "Preis auf Anfrage": None,
@@ -28,6 +30,7 @@ class TestUtils(unittest.TestCase):
             None: None,
             "2½ pièces": 2.5,
             "4 pièces": 4.0,
+            "9 Rue des Eaux-Vives, 4 pièces": 4.0,
         }
 
     def test_parse_price(self) -> None:
@@ -40,10 +43,9 @@ class TestUtils(unittest.TestCase):
 
     def test_config_missing_var_raises(self) -> None:
         """Test that missing required environment variables raise a SystemExit."""
+        with patch.dict(os.environ):
+            for var in REQUIRED_VARS:
+                os.environ.pop(var, None)
 
-        for var in REQUIRED_VARS:
-            if var in os.environ:
-                del os.environ[var]
-
-        with self.assertRaises(SystemExit):
-            Config()
+            with self.assertRaises(SystemExit):
+                Config()
