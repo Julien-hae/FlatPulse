@@ -48,8 +48,9 @@ fiches distinctes. À recalculer au prochain passage du notebook.
 |---|---|
 | `external_id` | `no_dossier` |
 | `external_url` | `link` |
+| `title` | `intitule_plaquette` |
 | `description` | `intitule_plaquette` |
-| `price_chf` | `loyer_mensuel_brut` |
+| `price_chf` | `loyer_mensuel_brut` (francs → centimes) |
 | `nb_rooms` | `nb_pieces` |
 | `surface_m2` | `surface_habitable` |
 | `city` | `adresse_localite` |
@@ -61,7 +62,15 @@ fiches distinctes. À recalculer au prochain passage du notebook.
 
 - L'URL /page-N/ renvoie le même shell vide : ne jamais paginer par URL.
 - /wp-json/naef/v1/api/properties-data répond 401 Invalid licence key — fausse piste.
-- loyer_sur_demande == 'oui' → price_chf = None, surtout pas 0.
+- loyer_sur_demande == 'oui' → price_chf = None, surtout pas 0. Le payload garde un
+  montant (30690 dans la fixture) même quand le loyer est sur demande : tester le drapeau
+  avant de lire le prix.
+- Les types varient d'une fiche à l'autre : `loyer_mensuel_brut` est `"2050"` ou `30690`,
+  `nb_pieces` est `"4.5"` (chaîne numérique, pas `"3½ pièces"` — `parse_rooms` ne s'y
+  applique pas), `surface_habitable` est une chaîne. Toujours convertir explicitement.
+- `adresse_canton` est vide pour plusieurs fiches (Crans-Montana, La Chaux-de-Fonds).
+- `NaefScraper` ne filtre pas le canton (le matching s'en charge) et ne conserve pas
+  `canton` ni `postal_code` : ils ne font pas partie de `OPTIONAL_FIELDS`.
 - imgs arrive en liste OU en objet indexé.
 - adresse_canton est le nom complet → utils.canton_code pour le VARCHAR(2).
 - Pas de rue dans le payload : slug du link ou fiche détail.
