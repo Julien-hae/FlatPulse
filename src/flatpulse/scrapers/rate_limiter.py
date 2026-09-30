@@ -20,6 +20,8 @@ class RateLimiter:
 
     async def acquire(self, slug: str) -> None:
         """Acquire a token from the rate limiter for the given slug."""
+        if slug not in self._buckets:
+            raise KeyError(f"Slug '{slug}' is not configured in the rate limiter.")
         bucket = self._buckets[slug]
         delay = bucket.try_acquire()
         while delay > 0.0:
@@ -28,6 +30,8 @@ class RateLimiter:
 
     def can_acquire(self, slug: str) -> bool:
         """Check if a token can be acquired for the given slug."""
+        if slug not in self._buckets:
+            raise KeyError(f"Slug '{slug}' is not configured in the rate limiter.")
         return self._buckets[slug].can_acquire()
 
 
@@ -40,6 +44,8 @@ class TokenBucket:
         Args:
             rpm (int): The rate per minute for the token bucket.
         """
+        if rpm == 0:
+            raise ValueError("Rate per minute (rpm) must be greater than 0.")
         self._capacity = float(rpm)
         self._rate = rpm / 60.0
         self._tokens = float(rpm)
@@ -64,4 +70,6 @@ class TokenBucket:
         if self._tokens >= 1:
             self._tokens -= 1
             return 0.0
+        if self._rate == 0:
+            return float("inf")
         return (1 - self._tokens) / self._rate

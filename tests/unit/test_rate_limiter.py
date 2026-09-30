@@ -44,3 +44,16 @@ class TestRateLimiter(unittest.IsolatedAsyncioTestCase):
             await limiter.acquire("naef")
         self.assertFalse(limiter.can_acquire("naef"))
         self.assertTrue(limiter.can_acquire("burger"))
+
+    async def test_zero_rate_raises(self) -> None:
+        """Test that initializing a rate limiter with a zero rate raises a ValueError."""
+        with self.assertRaises(ValueError):
+            RateLimiter({"naef": 0})
+
+    async def test_unconfigured_slug_raises(self) -> None:
+        """Test that accessing an unconfigured slug raises a KeyError."""
+        limiter = RateLimiter({"naef": 10})
+        with self.assertRaises(KeyError):
+            await limiter.acquire("burger")
+        with self.assertRaises(KeyError):
+            limiter.can_acquire("burger")
