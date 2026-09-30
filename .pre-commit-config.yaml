@@ -49,6 +49,7 @@ repos:
         name: mypy
         entry: mypy
         language: python
+        files: ^src/
         'types_or': [python, pyi]
         args: ["--scripts-are-modules"]
         require_serial: true
