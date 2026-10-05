@@ -101,6 +101,38 @@ class TestHttpScraper(unittest.IsolatedAsyncioTestCase):
         result = await scraper.fetch_listings()
         self.assertNotEqual(result[0]["fingerprint"], result[1]["fingerprint"])
 
+    @patch("httpx.AsyncClient.get", new_callable=AsyncMock)
+    async def test_contract_returns_list(self, mock_get: AsyncMock) -> None:
+        """The contract method must return a list of listings."""
+        mock_get.return_value = MinimalScraper.response_from_fixture(
+            "same_listing.html"
+        )
+        result = await MinimalScraper().fetch_listings()
+        self.assertIsInstance(result, list)
+
+    @patch("httpx.AsyncClient.get", new_callable=AsyncMock)
+    async def test_contract_has_fingerprint(self, mock_get: AsyncMock) -> None:
+        """Each listing returned by the contract must have a fingerprint."""
+        mock_get.return_value = MinimalScraper.response_from_fixture(
+            "same_listing.html"
+        )
+        result = await MinimalScraper().fetch_listings()
+        for listing in result:
+            self.assertIn("fingerprint", listing)
+            self.assertIsInstance(listing["fingerprint"], str)
+            self.assertEqual(len(listing["fingerprint"]), 64)
+
+    @patch("httpx.AsyncClient.get", new_callable=AsyncMock)
+    async def test_contract_idempotent(self, mock_get: AsyncMock) -> None:
+        """Fetching listings multiple times should yield the same fingerprints."""
+        mock_get.return_value = MinimalScraper.response_from_fixture(
+            "same_listing.html"
+        )
+        result1 = await MinimalScraper().fetch_listings()
+        result2 = await MinimalScraper().fetch_listings()
+        for listing1, listing2 in zip(result1, result2, strict=True):
+            self.assertEqual(listing1["fingerprint"], listing2["fingerprint"])
+
 
 class TestScraperContract(unittest.TestCase):
     """Tests for the abstract contract and dict building."""
@@ -128,23 +160,3 @@ class TestScraperContract(unittest.TestCase):
         """A missing required field must fail loudly."""
         with self.assertRaises(KeyError):
             MinimalScraper()._build_listing({"external_id": "1", "title": "Flat A"})
-
-    async def test_contract_returns_list(self) -> None:
-        """The contract method must return a list of listings."""
-        result = await MinimalScraper().fetch_listings()
-        self.assertIsInstance(result, list)
-
-    async def test_contract_has_fingerprint(self) -> None:
-        """Each listing returned by the contract must have a fingerprint."""
-        result = await MinimalScraper().fetch_listings()
-        for listing in result:
-            self.assertIn("fingerprint", listing)
-            self.assertIsInstance(listing["fingerprint"], str)
-            self.assertEqual(len(listing["fingerprint"]), 64)
-
-    async def test_contract_idempotent(self) -> None:
-        """Fetching listings multiple times should yield the same fingerprints."""
-        result1 = await MinimalScraper().fetch_listings()
-        result2 = await MinimalScraper().fetch_listings()
-        for listing1, listing2 in zip(result1, result2, strict=True):
-            self.assertEqual(listing1["fingerprint"], listing2["fingerprint"])
