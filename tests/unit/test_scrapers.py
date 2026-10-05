@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from parsel import Selector
 
-from flatpulse.scrapers.base import (
+from flatpulse.scrapers.base import (  # type: ignore[import-untyped]
     OPTIONAL_FIELDS,
     AbstractScraper,
     HttpScraper,
@@ -16,7 +16,7 @@ from flatpulse.scrapers.base import (
 FIXTURES_DIR = Path(__file__).parent.parent / "fixtures"
 
 
-class MinimalScraper(HttpScraper):
+class MinimalScraper(HttpScraper):  # type: ignore[misc]
     """Smallest possible HttpScraper subclass, used only to exercise the base class."""
 
     base_url = "https://example.com/louer"
@@ -108,9 +108,9 @@ class TestScraperContract(unittest.TestCase):
     def test_abstract_classes_cannot_be_instantiated(self) -> None:
         """AbstractScraper and HttpScraper are abstract and must not be instantiable."""
         with self.assertRaises(TypeError):
-            AbstractScraper()  # type: ignore[abstract]
+            AbstractScraper()
         with self.assertRaises(TypeError):
-            HttpScraper()  # type: ignore[abstract]
+            HttpScraper()
 
     def test_missing_optional_fields_become_none(self) -> None:
         """Optional fields omitted by parse_listing are filled with None."""
@@ -128,3 +128,23 @@ class TestScraperContract(unittest.TestCase):
         """A missing required field must fail loudly."""
         with self.assertRaises(KeyError):
             MinimalScraper()._build_listing({"external_id": "1", "title": "Flat A"})
+
+    async def test_contract_returns_list(self) -> None:
+        """The contract method must return a list of listings."""
+        result = await MinimalScraper().fetch_listings()
+        self.assertIsInstance(result, list)
+
+    async def test_contract_has_fingerprint(self) -> None:
+        """Each listing returned by the contract must have a fingerprint."""
+        result = await MinimalScraper().fetch_listings()
+        for listing in result:
+            self.assertIn("fingerprint", listing)
+            self.assertIsInstance(listing["fingerprint"], str)
+            self.assertEqual(len(listing["fingerprint"]), 64)
+
+    async def test_contract_idempotent(self) -> None:
+        """Fetching listings multiple times should yield the same fingerprints."""
+        result1 = await MinimalScraper().fetch_listings()
+        result2 = await MinimalScraper().fetch_listings()
+        for listing1, listing2 in zip(result1, result2, strict=True):
+            self.assertEqual(listing1["fingerprint"], listing2["fingerprint"])
