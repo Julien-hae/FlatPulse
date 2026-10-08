@@ -4,7 +4,7 @@ from typing import Any
 
 from parsel import Selector
 
-from flatpulse.common.utils import parse_rooms, parse_swiss_price
+from flatpulse.common.utils import parse_rooms, parse_surface, parse_swiss_price
 from flatpulse.scrapers.base import HttpScraper
 
 
@@ -27,7 +27,7 @@ class NaefScraper(HttpScraper):
             "title": self._text(node, "intitule_plaquette"),
             "price_chf": self._parse_naef_price(node),
             "nb_rooms": parse_rooms(self._text(node, "nb_pieces")),
-            "surface_m2": self._text(node, "surface_habitable"),
+            "surface_m2": parse_surface(self._text(node, "surface_habitable")),
             "city": self._text(node, "adresse_localite"),
             "images": node.jmespath("imgs[*]").getall(),
         }
@@ -41,9 +41,6 @@ class NaefScraper(HttpScraper):
     @classmethod
     def _parse_naef_price(cls, node: Selector) -> int | None:
         """Parse the monthly rent into centimes; None when absent or on request."""
-        if (
-            node.jmespath("loyer_sur_demande").get() == "oui"
-            and cls._text(node, "loyer_mensuel_brut") is None
-        ):
+        if node.jmespath("loyer_sur_demande").get() == "oui":
             return None
         return parse_swiss_price(cls._text(node, "loyer_mensuel_brut"))

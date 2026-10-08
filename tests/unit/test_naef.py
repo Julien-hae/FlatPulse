@@ -41,6 +41,7 @@ class TestNaefScraper(unittest.IsolatedAsyncioTestCase):
                 self.assertTrue(item[field])
             self.assertIsInstance(item["price_chf"], (int, type(None)))
             self.assertIsInstance(item["nb_rooms"], float)
+            self.assertIsInstance(item["surface_m2"], (float, type(None)))
 
     def test_naef_price_format(self) -> None:
         """Verify Naef rents are converted from CHF to centimes."""

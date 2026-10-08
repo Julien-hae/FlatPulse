@@ -41,3 +41,17 @@ def parse_rooms(text: str | None) -> float | None:
             rooms += 0.5
         return rooms
     return None
+
+
+def parse_surface(text: str | None) -> float | None:
+    """Format a Swiss surface string into a float representing the surface in square meters."""
+    if text is None:
+        return None
+    match = re.search(
+        r"(\d+(?:\.\d+)?)\s*(?:m²|m2|sqm|square meters?)",
+        text,
+        re.IGNORECASE,
+    )
+    if match:
+        return float(match.group(1))
+    return None
