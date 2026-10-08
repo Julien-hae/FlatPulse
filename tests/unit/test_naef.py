@@ -2,7 +2,7 @@
 
 import json
 import unittest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 from parsel import Selector
 
@@ -12,24 +12,20 @@ from flatpulse.scrapers.base import (
 from flatpulse.scrapers.sources.naef import (
     NaefScraper,
 )
-from tests.unit.test_scrapers import FIXTURES_DIR
+from tests.contract.test_scraper_contract import ScraperContractMixin
+from tests.helpers import response_from_fixture
 
 
-class TestNaefScraper(unittest.IsolatedAsyncioTestCase):
-    """Unit tests for NaefScraper against the frozen Naef JSON fixture."""
+class TestNaefScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
+    """Contract and unit tests for NaefScraper against the frozen Naef JSON fixture."""
 
-    @staticmethod
-    def response_from_fixture(filename: str) -> MagicMock:
-        """Build a fake httpx response whose body is the given fixture file."""
-        response = MagicMock()
-        response.text = (FIXTURES_DIR / filename).read_text(encoding="utf-8")
-        response.raise_for_status.return_value = None
-        return response
+    scraper_class = NaefScraper
+    fixture_name = "naef_location.json"
 
     @patch("httpx.AsyncClient.get", new_callable=AsyncMock)
     async def test_parse_naef_fixture(self, mock_get: AsyncMock) -> None:
         """fetch_listings turns the fixture into listings with the required fields."""
-        mock_get.return_value = self.response_from_fixture("naef_location.json")
+        mock_get.return_value = response_from_fixture("naef_location.json")
 
         result = await NaefScraper().fetch_listings()
 

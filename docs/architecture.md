@@ -435,6 +435,7 @@ tests/
   contract/      test_scraper_contract.py  → ScraperContractMixin
   integration/   test_pipeline.py
   fixtures/      HTML et JSON figés, une par régie
+  helpers.py     FIXTURES_DIR, response_from_fixture (partagés par les tests)
 ```
 
 Le découpage sépare les tests **par ce dont ils ont besoin pour tourner**, pas par la
@@ -457,13 +458,14 @@ va dans `unit/`, à côté du code qu'il couvre.
 **`ScraperContractMixin`** (#48) est hérité par le test de chaque scraper et vérifie
 quatre invariants sans duplication : retour `list`, champs requis non vides
 (`external_url` commence par `http`), `fingerprint` hex de 64 caractères, idempotence
-sur le même HTML.
+sur le même HTML. `fetch_listings` étant asynchrone, le mixin se combine avec
+`IsolatedAsyncioTestCase` ; il patche `httpx.AsyncClient.get` avec la fixture, jamais le
+réseau.
 
 ```python
-class TestNaefScraper(ScraperContractMixin, unittest.TestCase):
-    def setUp(self):
-        self.scraper = NaefScraper(...)
-        self.fixture = load_fixture("naef_location.json")
+class TestNaefScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
+    scraper_class = NaefScraper
+    fixture_name = "naef_location.json"
 ```
 
 Tout nouveau scraper **doit** arriver avec sa fixture figée dans `tests/fixtures/` et son

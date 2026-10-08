@@ -2,7 +2,6 @@
 
 import asyncio
 import hashlib
-import re
 from abc import ABC, abstractmethod
 from typing import Any
 
@@ -20,8 +19,6 @@ OPTIONAL_FIELDS = (
     "description",
     "images",
 )
-
-_PRICE_PATTERN = re.compile(r"\d[\d']*(?:\.\d+)?")
 
 
 class AbstractScraper(ABC):
