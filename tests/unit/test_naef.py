@@ -1,0 +1,95 @@
+"""Unit tests for the Naef Immobilier scraper."""
+
+import json
+import unittest
+from unittest.mock import AsyncMock, patch
+
+from parsel import Selector
+
+from flatpulse.scrapers.base import (
+    REQUIRED_FIELDS,
+)
+from flatpulse.scrapers.sources.naef import (
+    NaefScraper,
+)
+from tests.contract.test_scraper_contract import ScraperContractMixin
+from tests.helpers import response_from_fixture
+
+
+class TestNaefScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
+    """Contract and unit tests for NaefScraper against the frozen Naef JSON fixture."""
+
+    scraper_class = NaefScraper
+    fixture_name = "naef_location.json"
+
+    @patch("httpx.AsyncClient.get", new_callable=AsyncMock)
+    async def test_parse_naef_fixture(self, mock_get: AsyncMock) -> None:
+        """fetch_listings turns the fixture into listings with the required fields."""
+        mock_get.return_value = response_from_fixture("naef_location.json")
+
+        result = await NaefScraper().fetch_listings()
+
+        self.assertGreaterEqual(len(result), 2)
+        for item in result:
+            self.assertIsInstance(item, dict)
+            for field in REQUIRED_FIELDS:
+                self.assertIn(field, item)
+                self.assertTrue(item[field])
+            self.assertIsInstance(item["price_chf"], (int, type(None)))
+            self.assertIsInstance(item["nb_rooms"], float)
+            self.assertIsInstance(item["surface_m2"], (float, type(None)))
+
+    def test_naef_price_format(self) -> None:
+        """Verify Naef rents are converted from CHF to centimes."""
+        page = Selector(
+            text=json.dumps(
+                {
+                    "props": [
+                        {
+                            "no_dossier": "naef-1",
+                            "link": "https://www.naef.ch/listing/naef-1",
+                            "intitule_plaquette": "Appartement à Genève",
+                            "loyer_mensuel_brut": "CHF 1'850.–/mois",  # noqa: RUF001
+                        },
+                        {
+                            "no_dossier": "naef-2",
+                            "link": "https://www.naef.ch/listing/naef-2",
+                            "intitule_plaquette": "Appartement à Carouge",
+                            "loyer_mensuel_brut": "CHF 2'400.–/mois",  # noqa: RUF001
+                        },
+                    ]
+                }
+            )
+        )
+        scraper = NaefScraper()
+        listings = [scraper.parse_listing(node) for node in scraper.listing_nodes(page)]
+
+        self.assertEqual(
+            [listing["price_chf"] for listing in listings], [185000, 240000]
+        )
+
+    def test_naef_rooms_half_and_whole(self) -> None:
+        """Verify Naef room counts with half rooms and whole rooms are correctly parsed."""
+        page = Selector(
+            text=json.dumps(
+                {
+                    "props": [
+                        {
+                            "no_dossier": "naef-1",
+                            "link": "https://www.naef.ch/listing/naef-1",
+                            "intitule_plaquette": "Appartement à Genève",
+                            "nb_pieces": "3½ pièces",
+                        },
+                        {
+                            "no_dossier": "naef-2",
+                            "link": "https://www.naef.ch/listing/naef-2",
+                            "intitule_plaquette": "Appartement à Carouge",
+                            "nb_pieces": "4 pièces",
+                        },
+                    ]
+                }
+            )
+        )
+        scraper = NaefScraper()
+        listings = [scraper.parse_listing(node) for node in scraper.listing_nodes(page)]
+        self.assertEqual([listing["nb_rooms"] for listing in listings], [3.5, 4.0])

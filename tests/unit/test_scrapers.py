@@ -1,22 +1,22 @@
 """Unit tests for the scrapers base class."""
 
 import unittest
-from pathlib import Path
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 from parsel import Selector
 
-from flatpulse.scrapers.base import (  # type: ignore[import-untyped]
+from flatpulse.common.utils import parse_swiss_price
+from flatpulse.scrapers.base import (
     OPTIONAL_FIELDS,
     AbstractScraper,
     HttpScraper,
 )
+from tests.contract.test_scraper_contract import ScraperContractMixin
+from tests.helpers import response_from_fixture
 
-FIXTURES_DIR = Path(__file__).parent.parent / "fixtures"
 
-
-class MinimalScraper(HttpScraper):  # type: ignore[misc]
+class MinimalScraper(HttpScraper):
     """Smallest possible HttpScraper subclass, used only to exercise the base class."""
 
     base_url = "https://example.com/louer"
@@ -29,15 +29,17 @@ class MinimalScraper(HttpScraper):  # type: ignore[misc]
             "external_id": node.attrib.get("data-id"),
             "external_url": node.css("a.title::attr(href)").get(),
             "title": node.css("a.title::text").get(),
-            "price_chf": self.parse_price_chf(node.css("span.price::text").get()),
+            "price_chf": parse_swiss_price(node.css("span.price::text").get()),
         }
 
-    @staticmethod
-    def response_from_fixture(filename: str) -> MagicMock:
-        response = MagicMock()
-        response.text = (FIXTURES_DIR / filename).read_text(encoding="utf-8")
-        response.raise_for_status.return_value = None
-        return response
+
+class TestMinimalScraperContract(
+    ScraperContractMixin, unittest.IsolatedAsyncioTestCase
+):
+    """MinimalScraper honours the shared scraper contract."""
+
+    scraper_class = MinimalScraper
+    fixture_name = "same_listing.html"
 
 
 class TestHttpScraper(unittest.IsolatedAsyncioTestCase):
@@ -48,9 +50,7 @@ class TestHttpScraper(unittest.IsolatedAsyncioTestCase):
         self, mock_get: AsyncMock
     ) -> None:
         """Test that fetch_listings returns a list of dicts with the required keys."""
-        mock_get.return_value = MinimalScraper.response_from_fixture(
-            "sample_listing.html"
-        )
+        mock_get.return_value = response_from_fixture("sample_listing.html")
 
         scraper = MinimalScraper()
         result = await scraper.fetch_listings()
@@ -67,9 +67,7 @@ class TestHttpScraper(unittest.IsolatedAsyncioTestCase):
     @patch("httpx.AsyncClient.get", new_callable=AsyncMock)
     async def test_missing_price_returns_none(self, mock_get: AsyncMock) -> None:
         """Test that listings with missing or non-numeric prices return None for price_chf and do not crashes."""
-        mock_get.return_value = MinimalScraper.response_from_fixture(
-            "listing_no_price.html"
-        )
+        mock_get.return_value = response_from_fixture("listing_no_price.html")
 
         scraper = MinimalScraper()
         result = await scraper.fetch_listings()
@@ -80,9 +78,7 @@ class TestHttpScraper(unittest.IsolatedAsyncioTestCase):
     @patch("httpx.AsyncClient.get", new_callable=AsyncMock)
     async def test_fingerprint_deterministic(self, mock_get: AsyncMock) -> None:
         """Test that the fingerprint method returns the same value for the same input."""
-        mock_get.return_value = MinimalScraper.response_from_fixture(
-            "same_listing.html"
-        )
+        mock_get.return_value = response_from_fixture("same_listing.html")
 
         scraper = MinimalScraper()
         result = await scraper.fetch_listings()
@@ -93,45 +89,11 @@ class TestHttpScraper(unittest.IsolatedAsyncioTestCase):
         self, mock_get: AsyncMock
     ) -> None:
         """Test that the fingerprint method returns different values when the price changes."""
-        mock_get.return_value = MinimalScraper.response_from_fixture(
-            "different_price.html"
-        )
+        mock_get.return_value = response_from_fixture("different_price.html")
 
         scraper = MinimalScraper()
         result = await scraper.fetch_listings()
         self.assertNotEqual(result[0]["fingerprint"], result[1]["fingerprint"])
-
-    @patch("httpx.AsyncClient.get", new_callable=AsyncMock)
-    async def test_contract_returns_list(self, mock_get: AsyncMock) -> None:
-        """The contract method must return a list of listings."""
-        mock_get.return_value = MinimalScraper.response_from_fixture(
-            "same_listing.html"
-        )
-        result = await MinimalScraper().fetch_listings()
-        self.assertIsInstance(result, list)
-
-    @patch("httpx.AsyncClient.get", new_callable=AsyncMock)
-    async def test_contract_has_fingerprint(self, mock_get: AsyncMock) -> None:
-        """Each listing returned by the contract must have a fingerprint."""
-        mock_get.return_value = MinimalScraper.response_from_fixture(
-            "same_listing.html"
-        )
-        result = await MinimalScraper().fetch_listings()
-        for listing in result:
-            self.assertIn("fingerprint", listing)
-            self.assertIsInstance(listing["fingerprint"], str)
-            self.assertEqual(len(listing["fingerprint"]), 64)
-
-    @patch("httpx.AsyncClient.get", new_callable=AsyncMock)
-    async def test_contract_idempotent(self, mock_get: AsyncMock) -> None:
-        """Fetching listings multiple times should yield the same fingerprints."""
-        mock_get.return_value = MinimalScraper.response_from_fixture(
-            "same_listing.html"
-        )
-        result1 = await MinimalScraper().fetch_listings()
-        result2 = await MinimalScraper().fetch_listings()
-        for listing1, listing2 in zip(result1, result2, strict=True):
-            self.assertEqual(listing1["fingerprint"], listing2["fingerprint"])
 
 
 class TestScraperContract(unittest.TestCase):
@@ -140,9 +102,9 @@ class TestScraperContract(unittest.TestCase):
     def test_abstract_classes_cannot_be_instantiated(self) -> None:
         """AbstractScraper and HttpScraper are abstract and must not be instantiable."""
         with self.assertRaises(TypeError):
-            AbstractScraper()
+            AbstractScraper()  # type: ignore[abstract]
         with self.assertRaises(TypeError):
-            HttpScraper()
+            HttpScraper()  # type: ignore[abstract]
 
     def test_missing_optional_fields_become_none(self) -> None:
         """Optional fields omitted by parse_listing are filled with None."""

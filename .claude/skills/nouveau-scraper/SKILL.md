@@ -36,10 +36,9 @@ Le test tape sur une fixture figée, jamais sur le réseau.
 ## 3. Le test, rouge
 
 ```python
-class TestNaefScraper(ScraperContractMixin, unittest.TestCase):
-    def setUp(self) -> None:
-        self.scraper = NaefScraper(...)
-        self.fixture = load_fixture("naef_location.json")
+class TestNaefScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
+    scraper_class = NaefScraper
+    fixture_name = "naef_location.json"
 ```
 
 Hériter de `ScraperContractMixin` apporte gratuitement les 4 invariants communs : retour

@@ -25,6 +25,9 @@ def parse_rooms(text: str | None) -> float | None:
         return None
     if "studio" in text.lower():
         return 1.0
+    bare = re.fullmatch(r"\s*(\d+(?:\.\d+)?)(½)?\s*", text)
+    if bare:
+        return float(bare.group(1)) + (0.5 if bare.group(2) else 0.0)
     match = re.search(
         r"(\d+)(?:\.(\d+))?(½)?\s*(?:pièces?|chambres?|zimmer)\b",
         text,
@@ -37,4 +40,18 @@ def parse_rooms(text: str | None) -> float | None:
         if match.group(3):
             rooms += 0.5
         return rooms
+    return None
+
+
+def parse_surface(text: str | None) -> float | None:
+    """Format a Swiss surface string into a float representing the surface in square meters."""
+    if text is None:
+        return None
+    match = re.search(
+        r"(\d+(?:\.\d+)?)\s*(?:m²|m2|sqm|square meters?)",
+        text,
+        re.IGNORECASE,
+    )
+    if match:
+        return float(match.group(1))
     return None
