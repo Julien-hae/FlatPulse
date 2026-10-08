@@ -96,17 +96,3 @@ class HttpScraper(AbstractScraper):
         """Compute a unique fingerprint for a listing based on its URL, title, and price."""
         fingerprint_source = f"{external_url}|{title}|{price_chf}"
         return hashlib.sha256(fingerprint_source.encode()).hexdigest()
-
-    @staticmethod
-    def parse_price_chf(price_str: str | None) -> float | None:
-        """Parse a Swiss-formatted CHF price (e.g. "CHF 2'320.-") into a float.
-
-        Returns None when `price_str` is falsy or contains no digits, instead of
-        raising, so a missing/unparsable price never crashes a scrape.
-        """
-        if not price_str:
-            return None
-        match = _PRICE_PATTERN.search(price_str)
-        if not match:
-            return None
-        return float(match.group().replace("'", ""))

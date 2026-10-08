@@ -25,6 +25,9 @@ def parse_rooms(text: str | None) -> float | None:
         return None
     if "studio" in text.lower():
         return 1.0
+    bare = re.fullmatch(r"\s*(\d+(?:\.\d+)?)(½)?\s*", text)
+    if bare:
+        return float(bare.group(1)) + (0.5 if bare.group(2) else 0.0)
     match = re.search(
         r"(\d+)(?:\.(\d+))?(½)?\s*(?:pièces?|chambres?|zimmer)\b",
         text,

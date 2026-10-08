@@ -7,7 +7,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from parsel import Selector
 
-from flatpulse.scrapers.base import (  # type: ignore[import-untyped]
+from flatpulse.common.utils import parse_swiss_price
+from flatpulse.scrapers.base import (
     OPTIONAL_FIELDS,
     AbstractScraper,
     HttpScraper,
@@ -16,7 +17,7 @@ from flatpulse.scrapers.base import (  # type: ignore[import-untyped]
 FIXTURES_DIR = Path(__file__).parent.parent / "fixtures"
 
 
-class MinimalScraper(HttpScraper):  # type: ignore[misc]
+class MinimalScraper(HttpScraper):
     """Smallest possible HttpScraper subclass, used only to exercise the base class."""
 
     base_url = "https://example.com/louer"
@@ -29,7 +30,7 @@ class MinimalScraper(HttpScraper):  # type: ignore[misc]
             "external_id": node.attrib.get("data-id"),
             "external_url": node.css("a.title::attr(href)").get(),
             "title": node.css("a.title::text").get(),
-            "price_chf": self.parse_price_chf(node.css("span.price::text").get()),
+            "price_chf": parse_swiss_price(node.css("span.price::text").get()),
         }
 
     @staticmethod
@@ -140,9 +141,9 @@ class TestScraperContract(unittest.TestCase):
     def test_abstract_classes_cannot_be_instantiated(self) -> None:
         """AbstractScraper and HttpScraper are abstract and must not be instantiable."""
         with self.assertRaises(TypeError):
-            AbstractScraper()
+            AbstractScraper()  # type: ignore[abstract]
         with self.assertRaises(TypeError):
-            HttpScraper()
+            HttpScraper()  # type: ignore[abstract]
 
     def test_missing_optional_fields_become_none(self) -> None:
         """Optional fields omitted by parse_listing are filled with None."""
