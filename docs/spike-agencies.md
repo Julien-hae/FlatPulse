@@ -75,7 +75,7 @@ fiches distinctes. À recalculer au prochain passage du notebook.
 - Débit : pas de Crawl-delay · 4 req/min mesurés au spike ; un poll = sitemap + une requête par fiche (28 le 21.10.2026), à étaler par le `RateLimiter` (architecture §11)
 - Pas d'API ni de flux : ni RSS, ni JSON-LD ; les `api/…` du JS servent au formulaire de candidature
 - Volume : 27 fiches /fr/louer/ au sitemap, identiques aux 27 du scroll, toutes dans le canton de Genève — relevé le 21.10.2026
-- Fixture : `tests/fixtures/burger_listing.html` (listing, spike du 22.09) ; le test du scraper sert un sitemap et une fiche en ligne
+- Fixtures : `tests/fixtures/burger_fiche.html` (fiche réelle du 21.10.2026, contact anonymisé) ; `burger_listing.html` (listing, spike du 22.09)
 
 ### Sélecteurs CSS (fiche détail)
 
@@ -99,7 +99,7 @@ fiches distinctes. À recalculer au prochain passage du notebook.
 - Hôte canonique www.burger-sa.ch (celui du sitemap et du `link rel=canonical`).
 - Type de bien = première ligne des caractéristiques : Appartement, Studio, Maison ; Place ouverte, Bureau, Arcade, Garage individuel, Dépôt, Commerce. Non filtré par le scraper.
 - « 0.0 pièces » affiché quand le nombre est inconnu : c'est `None`.
-- Le 21.10.2026, une fiche sur six enchaînées a coupé la connexion sans réponse (`RemoteProtocolError`), puis répondu normalement : raison de plus pour espacer les requêtes.
+- Le 21.10.2026, une fiche sur six enchaînées a coupé la connexion sans réponse (`RemoteProtocolError`), puis répondu normalement : raison de plus pour espacer les requêtes ; une fiche en échec est loguée et ignorée, sans faire tomber le poll.
 
 ## Comptoir Immobilier (`comptoir`)
 
