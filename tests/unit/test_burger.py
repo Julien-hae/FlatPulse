@@ -81,8 +81,8 @@ class TestBurgerScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
             ),
         )
 
-    async def test_keeps_only_dwellings(self) -> None:
-        """The parking fiche is dropped; a site-side "0.0 pièces" becomes None."""
+    async def test_returns_every_fiche(self) -> None:
+        """Every fiche becomes a listing; a "0.0 pièces" or a parking has no room count."""
         listings = await self.fetch_from_fixture()
 
         by_slug = {x["external_url"].removeprefix(FICHE): x for x in listings}
@@ -92,11 +92,15 @@ class TestBurgerScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
                 "3-pieces-a-louer",
                 "geneve-appartement-de-charme-et-de-prestige",
                 "geneve-studio-meuble",
+                "le-lignon-parking-interne-au-1er-sous-sol",
             ],
         )
-        charme = by_slug["geneve-appartement-de-charme-et-de-prestige"]
-        self.assertIsNone(charme["nb_rooms"])
-        self.assertEqual(charme["price_chf"], 700000)
+        self.assertIsNone(
+            by_slug["geneve-appartement-de-charme-et-de-prestige"]["nb_rooms"]
+        )
+        self.assertIsNone(
+            by_slug["le-lignon-parking-interne-au-1er-sous-sol"]["nb_rooms"]
+        )
         self.assertEqual(by_slug["3-pieces-a-louer"]["price_chf"], 232000)
 
     @patch("httpx.AsyncClient.get", new_callable=AsyncMock)
@@ -111,7 +115,7 @@ class TestBurgerScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
 
     @patch("httpx.AsyncClient.get", new_callable=AsyncMock)
     async def test_an_unreadable_fiche_is_logged(self, mock_get: AsyncMock) -> None:
-        """A fiche without its rent block is a markup change, not a non-dwelling."""
+        """A fiche without its rent block (markup change) is logged and skipped."""
         fiches = serve()
 
         def get(url: str) -> MagicMock:
@@ -126,4 +130,4 @@ class TestBurgerScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
             listings = await BurgerScraper().fetch_listings()
 
         self.assertIn("geneve-studio-meuble", logs.output[0])
-        self.assertEqual(len(listings), 2)
+        self.assertEqual(len(listings), 3)

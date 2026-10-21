@@ -97,10 +97,10 @@ fiches distinctes. À recalculer au prochain passage du notebook.
 - Le slug peut mentir (35-pieces affiché 3.0 pièces) : faire foi au texte.
 - external_id = URL complète : deux fiches partagent le préfixe …mont-bla.
 - Hôte canonique www.burger-sa.ch (celui du sitemap et du `link rel=canonical`).
-- Type de bien = première ligne des caractéristiques : Appartement, Studio, Maison (logements) ; Place ouverte, Bureau, Arcade, Garage individuel, Dépôt, Commerce (à écarter).
+- Type de bien = première ligne des caractéristiques : Appartement, Studio, Maison ; Place ouverte, Bureau, Arcade, Garage individuel, Dépôt, Commerce. Non filtré par le scraper.
 - « 0.0 pièces » affiché quand le nombre est inconnu : c'est `None`.
 - Le 21.10.2026, une fiche sur six enchaînées a coupé la connexion sans réponse (`RemoteProtocolError`), puis répondu normalement : raison de plus pour espacer les requêtes.
-- Une fiche sans bloc « Loyer » est un changement de markup, pas un non-logement : elle est loguée.
+- Une fiche sans bloc « Loyer » est un changement de markup : elle est loguée.
 
 ## Comptoir Immobilier (`comptoir`)
 

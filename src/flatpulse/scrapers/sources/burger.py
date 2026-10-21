@@ -11,9 +11,6 @@ from parsel import Selector
 from flatpulse.common.utils import parse_rooms, parse_surface, parse_swiss_price
 from flatpulse.scrapers.base import HttpScraper
 
-# Type label opening a fiche's feature list; non-dwellings are Bureau, Commerce,
-# Dépôt, Arcade, Garage individuel, Place ouverte (docs/spike-agencies.md).
-_DWELLING = re.compile(r"(Appartement|Studio|Maison)\b")
 _NPA_CITY = re.compile(r"\d{4}\s+(.+)")
 # The fiche's own block (rent, address, features), not the similar-listing cards below.
 _MAIN_BLOCK = "//div[div/div[normalize-space()='Loyer']]"
@@ -33,8 +30,8 @@ class BurgerScraper(HttpScraper):
     sitemap_url = "https://www.burger-sa.ch/sitemap.php"
 
     def listing_nodes(self, page: Selector) -> list[Selector]:
-        """A fiche page is one listing, or none when it is not a dwelling."""
-        return [page] if _DWELLING.match(self._features(page)) else []
+        """A fiche page describes a single listing."""
+        return [page]
 
     def parse_listing(self, node: Selector) -> dict[str, Any]:
         """Extract the listing from a fiche page, ignoring the similar-listing cards."""
@@ -89,10 +86,7 @@ class BurgerScraper(HttpScraper):
                 if not page.xpath(_MAIN_BLOCK):
                     LOGGER.warning("Fiche Burger %s illisible : bloc Loyer absent", url)
                     continue
-                listings += [
-                    self._build_listing(self.parse_listing(node))
-                    for node in self.listing_nodes(page)
-                ]
+                listings.append(self._build_listing(self.parse_listing(page)))
         return listings
 
     @staticmethod
