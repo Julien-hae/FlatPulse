@@ -71,8 +71,8 @@ fiches distinctes. À recalculer au prochain passage du notebook.
 - Accès : `GET www.burger-sa.ch/sitemap.php` (liste des fiches) puis `GET /fr/louer/<slug>` (une fiche = une annonce)
 - Rendu : HTML statique ; le listing `/fr/louer` se charge en scroll infini (`infiniteScroll` sur `a.pagination__next`, lien jamais retiré, même sur les pages vides)
 - Pagination : aucune côté scraper — le sitemap liste toutes les fiches avec leur `lastmod`
-- Scraper : **HttpScraper** (sitemap XML + fiche HTML), seules les fiches nouvelles ou au `lastmod` changé sont téléchargées
-- Débit : pas de Crawl-delay · sitemap + 5 fiches au plus toutes les 90s = 4 req/min ; un démarrage à froid rattrape les fiches par tranches de 5
+- Scraper : **HttpScraper** (sitemap XML + fiche HTML) : chaque poll lit le sitemap puis parse chaque fiche
+- Débit : pas de Crawl-delay · 4 req/min mesurés au spike ; un poll = sitemap + une requête par fiche (28 le 21.10.2026), à étaler par le `RateLimiter` (architecture §11)
 - Pas d'API ni de flux : ni RSS, ni JSON-LD ; les `api/…` du JS servent au formulaire de candidature
 - Volume : 27 fiches /fr/louer/ au sitemap, identiques aux 27 du scroll, toutes dans le canton de Genève — relevé le 21.10.2026
 - Fixtures : `tests/fixtures/burger_sitemap.xml` (extrait réel) et `burger_fiche_*.html` (4 fiches, contact anonymisé)
@@ -99,7 +99,8 @@ fiches distinctes. À recalculer au prochain passage du notebook.
 - Hôte canonique www.burger-sa.ch (celui du sitemap et du `link rel=canonical`).
 - Type de bien = première ligne des caractéristiques : Appartement, Studio, Maison (logements) ; Place ouverte, Bureau, Arcade, Garage individuel, Dépôt, Commerce (à écarter).
 - « 0.0 pièces » affiché quand le nombre est inconnu : c'est `None`.
-- Le 21.10.2026, une fiche sur six enchaînées a coupé la connexion sans réponse (`RemoteProtocolError`), puis répondu normalement : une fiche en échec est retentée au poll suivant, sans faire tomber le poll.
+- Le 21.10.2026, une fiche sur six enchaînées a coupé la connexion sans réponse (`RemoteProtocolError`), puis répondu normalement : raison de plus pour espacer les requêtes.
+- Une fiche sans bloc « Loyer » est un changement de markup, pas un non-logement : elle est loguée.
 
 ## Comptoir Immobilier (`comptoir`)
 

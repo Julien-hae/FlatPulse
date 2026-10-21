@@ -1,12 +1,10 @@
 """Unit tests for the Burger Immobilier scraper (sitemap + fiche pages)."""
 
-import re
 import unittest
 from collections.abc import Callable
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import httpx
 from parsel import Selector
 
 from flatpulse.scrapers.sources.burger import BurgerScraper
@@ -17,27 +15,15 @@ FICHE = "https://www.burger-sa.ch/fr/louer/"
 SITEMAP = response_from_fixture("burger_sitemap.xml").text
 
 
-def serve(sitemap: str = SITEMAP, down: str = "") -> Callable[[str], MagicMock]:
-    """Fake httpx GET: the given sitemap, and each fiche from its frozen fixture.
-
-    The fiche whose slug is `down` fails like the live server did once (21.10.2026).
-    """
+def serve(sitemap: str = SITEMAP) -> Callable[[str], MagicMock]:
+    """Fake httpx GET: the given sitemap, and each fiche from its frozen fixture."""
 
     def get(url: str) -> MagicMock:
-        if down and url == FICHE + down:
-            raise httpx.RemoteProtocolError(
-                "Server disconnected without sending a response."
-            )
         if url == BurgerScraper.sitemap_url:
             return MagicMock(text=sitemap)
         return response_from_fixture(f"burger_fiche_{url.removeprefix(FICHE)}.html")
 
     return get
-
-
-def requested(mock_get: AsyncMock) -> list[str]:
-    """URLs passed to the mocked httpx GET, in call order."""
-    return [call.args[0] for call in mock_get.call_args_list]
 
 
 class TestBurgerScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
@@ -75,6 +61,26 @@ class TestBurgerScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
         for image in listing["images"]:
             self.assertTrue(image.startswith("https://www.burger-sa.ch/corumfiles/"))
 
+    @patch("httpx.AsyncClient.get", new_callable=AsyncMock)
+    async def test_parses_every_fiche_of_the_sitemap(self, mock_get: AsyncMock) -> None:
+        """Each rental fiche of the sitemap is fetched; non-rental URLs are not."""
+        mock_get.side_effect = serve()
+
+        await BurgerScraper().fetch_listings()
+
+        self.assertEqual(
+            sorted(call.args[0] for call in mock_get.call_args_list),
+            sorted(
+                [
+                    BurgerScraper.sitemap_url,
+                    FICHE + "3-pieces-a-louer",
+                    FICHE + "geneve-appartement-de-charme-et-de-prestige",
+                    FICHE + "geneve-studio-meuble",
+                    FICHE + "le-lignon-parking-interne-au-1er-sous-sol",
+                ]
+            ),
+        )
+
     async def test_keeps_only_dwellings(self) -> None:
         """The parking fiche is dropped; a site-side "0.0 pièces" becomes None."""
         listings = await self.fetch_from_fixture()
@@ -94,109 +100,6 @@ class TestBurgerScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
         self.assertEqual(by_slug["3-pieces-a-louer"]["price_chf"], 232000)
 
     @patch("httpx.AsyncClient.get", new_callable=AsyncMock)
-    async def test_second_poll_only_fetches_changed_fiches(
-        self, mock_get: AsyncMock
-    ) -> None:
-        """Unchanged sitemap: only the sitemap. A new lastmod: only that fiche."""
-        scraper = BurgerScraper()
-        mock_get.side_effect = serve()
-        await scraper.fetch_listings()
-
-        mock_get.reset_mock()
-        await scraper.fetch_listings()
-        self.assertEqual(requested(mock_get), [BurgerScraper.sitemap_url])
-
-        mock_get.reset_mock()
-        mock_get.side_effect = serve(
-            SITEMAP.replace(
-                "geneve-studio-meuble</loc>\n<lastmod>2026-10-21",
-                "geneve-studio-meuble</loc>\n<lastmod>2026-10-22",
-            )
-        )
-        await scraper.fetch_listings()
-        self.assertEqual(
-            requested(mock_get),
-            [BurgerScraper.sitemap_url, FICHE + "geneve-studio-meuble"],
-        )
-
-    @patch("httpx.AsyncClient.get", new_callable=AsyncMock)
-    async def test_new_fiches_come_before_changed_ones(
-        self, mock_get: AsyncMock
-    ) -> None:
-        """A brand-new fiche is not delayed behind fiches whose lastmod moved."""
-        studio = r"<url>\s*<loc>[^<]*geneve-studio-meuble</loc>.*?</url>\s*"
-        scraper = BurgerScraper()
-        mock_get.side_effect = serve(re.sub(studio, "", SITEMAP, flags=re.S))
-        await scraper.fetch_listings()
-
-        mock_get.reset_mock()
-        scraper.max_fiches_per_poll = 1
-        mock_get.side_effect = serve(SITEMAP.replace("2026-10-21", "2026-10-22"))
-        await scraper.fetch_listings()
-
-        self.assertEqual(
-            requested(mock_get),
-            [BurgerScraper.sitemap_url, FICHE + "geneve-studio-meuble"],
-        )
-
-    @patch("httpx.AsyncClient.get", new_callable=AsyncMock)
-    async def test_caps_fiches_per_poll(self, mock_get: AsyncMock) -> None:
-        """A cold start downloads at most max_fiches_per_poll fiches, the rest next poll."""
-        scraper = BurgerScraper()
-        scraper.max_fiches_per_poll = 3
-        mock_get.side_effect = serve()
-
-        await scraper.fetch_listings()
-        self.assertEqual(len(requested(mock_get)), 1 + 3)
-
-        mock_get.reset_mock()
-        listings = await scraper.fetch_listings()
-        self.assertEqual(len(requested(mock_get)), 1 + 1)
-        self.assertEqual(len(listings), 3)
-
-    @patch("httpx.AsyncClient.get", new_callable=AsyncMock)
-    async def test_drops_fiches_removed_from_sitemap(self, mock_get: AsyncMock) -> None:
-        """A fiche that leaves the sitemap is no longer returned."""
-        scraper = BurgerScraper()
-        mock_get.side_effect = serve()
-        await scraper.fetch_listings()
-
-        mock_get.side_effect = serve(
-            re.sub(
-                r"<url>\s*<loc>[^<]*geneve-studio-meuble</loc>.*?</url>\s*",
-                "",
-                SITEMAP,
-                flags=re.S,
-            )
-        )
-        listings = await scraper.fetch_listings()
-
-        self.assertNotIn(
-            FICHE + "geneve-studio-meuble", [x["external_url"] for x in listings]
-        )
-
-    @patch("httpx.AsyncClient.get", new_callable=AsyncMock)
-    async def test_a_failing_fiche_is_retried_next_poll(
-        self, mock_get: AsyncMock
-    ) -> None:
-        """One fiche failing does not fail the poll: it is logged and retried later."""
-        scraper = BurgerScraper()
-        mock_get.side_effect = serve(down="geneve-studio-meuble")
-
-        with self.assertLogs("flatpulse.scrapers.sources.burger", "WARNING"):
-            listings = await scraper.fetch_listings()
-        self.assertEqual(len(listings), 2)
-
-        mock_get.reset_mock()
-        mock_get.side_effect = serve()
-        listings = await scraper.fetch_listings()
-        self.assertEqual(
-            requested(mock_get),
-            [BurgerScraper.sitemap_url, FICHE + "geneve-studio-meuble"],
-        )
-        self.assertEqual(len(listings), 3)
-
-    @patch("httpx.AsyncClient.get", new_callable=AsyncMock)
     async def test_a_sitemap_without_fiches_is_an_error(
         self, mock_get: AsyncMock
     ) -> None:
@@ -207,9 +110,7 @@ class TestBurgerScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
             await BurgerScraper().fetch_listings()
 
     @patch("httpx.AsyncClient.get", new_callable=AsyncMock)
-    async def test_an_unreadable_fiche_is_logged_and_retried(
-        self, mock_get: AsyncMock
-    ) -> None:
+    async def test_an_unreadable_fiche_is_logged(self, mock_get: AsyncMock) -> None:
         """A fiche without its rent block is a markup change, not a non-dwelling."""
         fiches = serve()
 
@@ -220,18 +121,9 @@ class TestBurgerScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
                 )
             return fiches(url)
 
-        scraper = BurgerScraper()
         mock_get.side_effect = get
         with self.assertLogs("flatpulse.scrapers.sources.burger", "WARNING") as logs:
-            listings = await scraper.fetch_listings()
+            listings = await BurgerScraper().fetch_listings()
+
         self.assertIn("geneve-studio-meuble", logs.output[0])
         self.assertEqual(len(listings), 2)
-
-        mock_get.reset_mock()
-        mock_get.side_effect = fiches
-        listings = await scraper.fetch_listings()
-        self.assertEqual(
-            requested(mock_get),
-            [BurgerScraper.sitemap_url, FICHE + "geneve-studio-meuble"],
-        )
-        self.assertEqual(len(listings), 3)

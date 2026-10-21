@@ -23,26 +23,14 @@ LOGGER = logging.getLogger(__name__)
 
 
 class BurgerScraper(HttpScraper):
-    """Scrape Burger rentals from sitemap.php and the fiche pages.
+    """Scrape Burger rentals: sitemap.php lists every fiche, each fiche is parsed.
 
-    The /fr/louer listing loads through infinite scroll, while the sitemap lists every
-    fiche with its lastmod: only new or changed fiches are downloaded, at most
-    `max_fiches_per_poll` per poll, new fiches first, the others coming at the next
-    polls. A fiche that fails to download or to parse is logged and retried at the
-    next poll; a sitemap without any fiche is an error, never an empty catalogue.
-    The known fiches live on the instance: the pipeline must reuse it between polls.
+    The /fr/louer listing loads through infinite scroll; the sitemap is the complete,
+    reliable list of rental fiches (docs/spike-agencies.md).
     """
 
     base_url = "https://www.burger-sa.ch/fr/louer"
     sitemap_url = "https://www.burger-sa.ch/sitemap.php"
-    # Sitemap + 5 fiches every 90 s = 4 req/min, the rate measured in the spike. Stopgap
-    # until the per-source RateLimiter throttles each request (docs/architecture.md §11).
-    max_fiches_per_poll = 5
-
-    def __init__(self) -> None:
-        """Start with no known fiche."""
-        # fiche URL -> (lastmod, listing, or None when the fiche is not a dwelling)
-        self._fiches: dict[str, tuple[str, dict[str, Any] | None]] = {}
 
     def listing_nodes(self, page: Selector) -> list[Selector]:
         """A fiche page is one listing, or none when it is not a dwelling."""
@@ -80,50 +68,36 @@ class BurgerScraper(HttpScraper):
         }
 
     async def fetch_listings(self) -> list[dict[str, Any]]:
-        """Refresh new or changed fiches from the sitemap; return every known dwelling."""
+        """List every rental fiche from the sitemap, then parse each fiche."""
+        listings: list[dict[str, Any]] = []
         async with httpx.AsyncClient() as client:
             sitemap = Selector(
                 text=await self._get(client, self.sitemap_url), type="xml"
             )
             sitemap.remove_namespaces()
-            lastmods = {
-                url: entry.xpath("string(lastmod)").get("")
-                for entry in sitemap.xpath("//url")
-                if (url := entry.xpath("string(loc)").get("")).startswith(
-                    f"{self.base_url}/"
-                )
-            }
-            if not lastmods:
+            urls = [
+                url
+                for url in sitemap.xpath("//url/loc/text()").getall()
+                if url.startswith(f"{self.base_url}/")
+            ]
+            if not urls:
                 raise ValueError(
                     f"Sitemap Burger sans fiche {self.base_url}/… : format changé ?"
                 )
-            new = [url for url in lastmods if url not in self._fiches]
-            changed = [
-                url
-                for url, lastmod in lastmods.items()
-                if url in self._fiches and self._fiches[url][0] != lastmod
-            ]
-            for url in (new + changed)[: self.max_fiches_per_poll]:
-                try:
-                    html = await self._get(client, url)
-                except httpx.HTTPError as error:
-                    LOGGER.warning("Fiche Burger %s non récupérée : %r", url, error)
-                    continue
-                page = Selector(text=html)
+            for url in urls:
+                page = Selector(text=await self._get(client, url))
                 if not page.xpath(_MAIN_BLOCK):
                     LOGGER.warning("Fiche Burger %s illisible : bloc Loyer absent", url)
                     continue
-                nodes = self.listing_nodes(page)
-                listing = (
-                    self._build_listing(self.parse_listing(nodes[0])) if nodes else None
-                )
-                self._fiches[url] = (lastmods[url], listing)
-        self._fiches = {u: f for u, f in self._fiches.items() if u in lastmods}
-        return [listing for _, listing in self._fiches.values() if listing]
+                listings += [
+                    self._build_listing(self.parse_listing(node))
+                    for node in self.listing_nodes(page)
+                ]
+        return listings
 
     @staticmethod
     def _features(page: Selector) -> str:
-        """Type, rooms and surface lines of the fiche's main block, e.g. "Studio 1.0 pièces 36 m2"."""
+        """Type, rooms and surface lines of the fiche, e.g. "Studio 1.0 pièces 36 m2"."""
         texts = page.xpath(_MAIN_BLOCK).css(f"{_DETAILS} div.text-sm::text").getall()
         return " ".join(texts).strip()
 
