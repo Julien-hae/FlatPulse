@@ -25,7 +25,7 @@ class TestNaefScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
     @patch("httpx.AsyncClient.get", new_callable=AsyncMock)
     async def test_parse_naef_fixture(self, mock_get: AsyncMock) -> None:
         """fetch_listings turns the fixture into listings with the required fields."""
-        mock_get.return_value = response_from_fixture("naef_location.json")
+        mock_get.return_value = response_from_fixture(self.fixture_name)
 
         result = await NaefScraper().fetch_listings()
 
