@@ -16,7 +16,7 @@ fiches distinctes. À recalculer au prochain passage du notebook.
 | Régie | Statut | Accès | Pagination | Fiches | Genève | Scraper | Vérifié |
 |---|---|---|---|---|---|---|---|
 | Naef Immobilier | MVP phase 1 | `GET naef.ch/wp-admin/admin-ajax.php?action=get_all_props&type=Location` | aucune — tout le parc en un GET | 355 | 58 | **HttpScraper (JSON)** | HTTP 200 |
-| Agence Immobilière Rodolphe Burger SA | MVP phase 1 | `GET burger-sa.ch/fr/louer?page=N` | ?page=N, 6 annonces par page | 32 | 32 | **HttpScraper** | HTTP 200 |
+| Agence Immobilière Rodolphe Burger SA | MVP phase 1 | `GET www.burger-sa.ch/sitemap.php` + fiches | aucune — sitemap complet, `lastmod` par fiche | 27 | 27 | **HttpScraper** | HTTP 200 |
 | Comptoir Immobilier | MVP phase 1 | `GET comptoir-immo.ch/location/{appartement,maison}/Genève/?page=N` | ?page=N, 24 par page — tri antichronologique par défaut | 29 | 29 | **HttpScraper** | HTTP 200 |
 | Rosset & Cie | candidate phase 2 | `GET rosset.ch/api/properties?page=N` | ?page=N, 24 par page, totalPages dans la réponse | 165 | 105 | **HttpScraper (JSON)** | HTTP 200 |
 | Bory & Cie | candidate phase 2 | `GET bory.ch/louer → script#__NEXT_DATA__` | connexion GraphQL Relay : pageInfo.endCursor, 20 sur 28 | 20 | — | **HttpScraper (JSON)** | HTTP 200 |
@@ -68,35 +68,38 @@ fiches distinctes. À recalculer au prochain passage du notebook.
 
 ## Agence Immobilière Rodolphe Burger SA (`burger`)
 
-- Accès : `GET burger-sa.ch/fr/louer?page=N`
-- Rendu : HTML statique
-- Pagination : ?page=N, 6 annonces par page
-- Scraper : **HttpScraper**
-- Débit : pas de Crawl-delay · 6 pages à 90s = 4 req/min
-- Canal de repli : sitemap.php — 32 fiches /fr/louer/ en 5 Ko, lastmod à jour, URLs nues
-- Volume : 32 fiches distinctes, dont 32 dans le canton de Genève — relevé le 22.09.2026 07:29 UTC
-- Flux : +0 depuis 22.09.2026 07:25
-- Fixture : `tests/fixtures/burger_listing.html` (HTML)
+- Accès : `GET www.burger-sa.ch/sitemap.php` (liste des fiches) puis `GET /fr/louer/<slug>` (une fiche = une annonce)
+- Rendu : HTML statique ; le listing `/fr/louer` se charge en scroll infini (`infiniteScroll` sur `a.pagination__next`, lien jamais retiré, même sur les pages vides)
+- Pagination : aucune côté scraper — le sitemap liste toutes les fiches avec leur `lastmod`
+- Scraper : **HttpScraper** (sitemap XML + fiche HTML), seules les fiches nouvelles ou au `lastmod` changé sont téléchargées
+- Débit : pas de Crawl-delay · sitemap + 5 fiches au plus toutes les 90s = 4 req/min ; un démarrage à froid rattrape les fiches par tranches de 5
+- Pas d'API ni de flux : ni RSS, ni JSON-LD ; les `api/…` du JS servent au formulaire de candidature
+- Volume : 27 fiches /fr/louer/ au sitemap, identiques aux 27 du scroll, toutes dans le canton de Genève — relevé le 21.10.2026
+- Fixtures : `tests/fixtures/burger_sitemap.xml` (extrait réel) et `burger_fiche_*.html` (4 fiches, contact anonymisé)
 
-### Sélecteurs CSS
+### Sélecteurs CSS (fiche détail)
 
 | Champ | Sélecteur |
 |---|---|
-| conteneur | `div.bien-item` |
-| lien | `div.bien-item a::attr(href)` |
-| image | `div.bien-item img::attr(src)` |
-| ville | `div.bien-item h2::text` |
-| adresse | `div.bien-item h3::text` |
-| prix / pièces / surface | `par motif sur le texte de la carte (Tailwind)` |
+| URL / id | `link[rel=canonical]::attr(href)` |
+| titre | `h1::text` |
+| description | `div.prose` (texte) |
+| encart principal | `//div[div/div[normalize-space()='Loyer']]` (exclut les cartes « Ces biens pourraient vous intéresser » plus bas) |
+| prix | dans l'encart, le `div` qui suit « Loyer » |
+| rue / NPA ville | dans l'encart, `div.space-y-4.mt-6 div.text-base` (deux lignes séparées par `<br>`) |
+| type / pièces / surface | dans l'encart, `div.space-y-4.mt-6 div.text-sm` |
+| images | `div.swiper-slide img::attr(data-src)`, relatives au `<base href="https://www.burger-sa.ch/">` |
 
 ### Pièges
 
 - Trois formats de prix : CHF 3'500.— / mois, CHF 2'320.- + charges, Dès CHF 2'320.- + charges. Tiret cadratin autant que tiret simple.
-- Charges sur une ligne commençant par « + » : écarter les lignes contenant « charges » casserait le format « Dès … + charges ».
 - Surface absente, en fourchette (de 85 M2 à 100 M2) ou préfixée (ENV. 60 M2).
 - Le slug peut mentir (35-pieces affiché 3.0 pièces) : faire foi au texte.
 - external_id = URL complète : deux fiches partagent le préfixe …mont-bla.
-- Le listing mélange logements, commerces et parkings : filtrer.
+- Hôte canonique www.burger-sa.ch (celui du sitemap et du `link rel=canonical`).
+- Type de bien = première ligne des caractéristiques : Appartement, Studio, Maison (logements) ; Place ouverte, Bureau, Arcade, Garage individuel, Dépôt, Commerce (à écarter).
+- « 0.0 pièces » affiché quand le nombre est inconnu : c'est `None`.
+- Le 21.10.2026, une fiche sur six enchaînées a coupé la connexion sans réponse (`RemoteProtocolError`), puis répondu normalement : une fiche en échec est retentée au poll suivant, sans faire tomber le poll.
 
 ## Comptoir Immobilier (`comptoir`)
 
