@@ -28,7 +28,8 @@ class BurgerScraper(HttpScraper):
     The /fr/louer listing loads through infinite scroll, while the sitemap lists every
     fiche with its lastmod: only new or changed fiches are downloaded, at most
     `max_fiches_per_poll` per poll, new fiches first, the others coming at the next
-    polls. A fiche that fails to download is logged and retried at the next poll.
+    polls. A fiche that fails to download or to parse is logged and retried at the
+    next poll; a sitemap without any fiche is an error, never an empty catalogue.
     The known fiches live on the instance: the pipeline must reuse it between polls.
     """
 
@@ -92,6 +93,10 @@ class BurgerScraper(HttpScraper):
                     f"{self.base_url}/"
                 )
             }
+            if not lastmods:
+                raise ValueError(
+                    f"Sitemap Burger sans fiche {self.base_url}/… : format changé ?"
+                )
             new = [url for url in lastmods if url not in self._fiches]
             changed = [
                 url
@@ -104,7 +109,11 @@ class BurgerScraper(HttpScraper):
                 except httpx.HTTPError as error:
                     LOGGER.warning("Fiche Burger %s non récupérée : %r", url, error)
                     continue
-                nodes = self.listing_nodes(Selector(text=html))
+                page = Selector(text=html)
+                if not page.xpath(_MAIN_BLOCK):
+                    LOGGER.warning("Fiche Burger %s illisible : bloc Loyer absent", url)
+                    continue
+                nodes = self.listing_nodes(page)
                 listing = (
                     self._build_listing(self.parse_listing(nodes[0])) if nodes else None
                 )

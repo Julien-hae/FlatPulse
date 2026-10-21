@@ -195,3 +195,43 @@ class TestBurgerScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
             [BurgerScraper.sitemap_url, FICHE + "geneve-studio-meuble"],
         )
         self.assertEqual(len(listings), 3)
+
+    @patch("httpx.AsyncClient.get", new_callable=AsyncMock)
+    async def test_a_sitemap_without_fiches_is_an_error(
+        self, mock_get: AsyncMock
+    ) -> None:
+        """A sitemap format change must not pass for "Burger has nothing to rent"."""
+        mock_get.side_effect = serve(SITEMAP.replace("/fr/louer/", "/fr/rent/"))
+
+        with self.assertRaises(ValueError):
+            await BurgerScraper().fetch_listings()
+
+    @patch("httpx.AsyncClient.get", new_callable=AsyncMock)
+    async def test_an_unreadable_fiche_is_logged_and_retried(
+        self, mock_get: AsyncMock
+    ) -> None:
+        """A fiche without its rent block is a markup change, not a non-dwelling."""
+        fiches = serve()
+
+        def get(url: str) -> MagicMock:
+            if url == FICHE + "geneve-studio-meuble":
+                return MagicMock(
+                    text="<html><body><h1>Studio meublé</h1></body></html>"
+                )
+            return fiches(url)
+
+        scraper = BurgerScraper()
+        mock_get.side_effect = get
+        with self.assertLogs("flatpulse.scrapers.sources.burger", "WARNING") as logs:
+            listings = await scraper.fetch_listings()
+        self.assertIn("geneve-studio-meuble", logs.output[0])
+        self.assertEqual(len(listings), 2)
+
+        mock_get.reset_mock()
+        mock_get.side_effect = fiches
+        listings = await scraper.fetch_listings()
+        self.assertEqual(
+            requested(mock_get),
+            [BurgerScraper.sitemap_url, FICHE + "geneve-studio-meuble"],
+        )
+        self.assertEqual(len(listings), 3)
