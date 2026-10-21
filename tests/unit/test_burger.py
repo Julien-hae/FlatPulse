@@ -5,6 +5,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
+from parsel import Selector
 
 from flatpulse.scrapers.sources.burger import BurgerScraper
 from tests.contract.test_scraper_contract import ScraperContractMixin
@@ -67,6 +68,18 @@ class TestBurgerScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
         mock_get.side_effect = get
         with self.assertLogs("flatpulse.scrapers.sources.burger", "WARNING"):
             self.assertEqual(await BurgerScraper().fetch_listings(), [])
+
+    def test_parse_listing_falls_back_to_the_canonical_url(self) -> None:
+        """Called through the base contract, without `url`, the fiche names itself."""
+        page = Selector(text=response_from_fixture("burger_fiche.html").text)
+
+        self.assertEqual(BurgerScraper().parse_listing(page)["external_url"], URL)
+
+    def test_an_empty_description_is_none(self) -> None:
+        """An empty description block is an absent field, not an empty string."""
+        page = Selector(text='<div class="prose">  </div>')
+
+        self.assertIsNone(BurgerScraper().parse_listing(page, URL)["description"])
 
     def test_city_needs_a_npa_line(self) -> None:
         """The city comes from the "NPA town" line only; anything else is None."""

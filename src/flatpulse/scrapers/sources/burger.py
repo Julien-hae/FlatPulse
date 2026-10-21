@@ -41,7 +41,8 @@ class BurgerScraper(HttpScraper):
         return page.xpath("//*[local-name()='loc'][contains(text(), '/fr/louer/')]")
 
     def parse_listing(self, node: Selector, url: str | None = None) -> dict[str, Any]:
-        """Extract the listing from a fiche page downloaded from `url`."""
+        """Extract the listing from a fiche page, known by `url` or by its canonical link."""
+        url = url or node.css("link[rel=canonical]::attr(href)").get()
         details = node.css("div.space-y-4.mt-6")
         address = [line.strip() for line in details.css("div.text-base::text").getall()]
         features = " ".join(details.css("div.text-sm::text").getall())
@@ -55,7 +56,8 @@ class BurgerScraper(HttpScraper):
             "surface_m2": parse_surface(features),
             "address": address[0] if address else None,
             "city": self.city(address),
-            "description": node.css("div.prose").xpath("normalize-space()").get(),
+            "description": node.css("div.prose").xpath("normalize-space()").get()
+            or None,
             "images": [
                 urljoin(self.base_url, src)
                 for src in node.css("div.swiper-slide img::attr(data-src)").getall()
