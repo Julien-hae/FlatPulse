@@ -1,7 +1,6 @@
 """Unit tests for the Burger Immobilier scraper (sitemap + fiche pages)."""
 
 import unittest
-from collections.abc import Callable
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -12,18 +11,13 @@ from tests.contract.test_scraper_contract import ScraperContractMixin
 from tests.helpers import response_from_fixture
 
 FICHE = "https://www.burger-sa.ch/fr/louer/"
-SITEMAP = response_from_fixture("burger_sitemap.xml").text
 
 
-def serve(sitemap: str = SITEMAP) -> Callable[[str], MagicMock]:
-    """Fake httpx GET: the given sitemap, and each fiche from its frozen fixture."""
-
-    def get(url: str) -> MagicMock:
-        if url == BurgerScraper.sitemap_url:
-            return MagicMock(text=sitemap)
-        return response_from_fixture(f"burger_fiche_{url.removeprefix(FICHE)}.html")
-
-    return get
+def fake_get(url: str) -> MagicMock:
+    """httpx GET served from fixtures: the sitemap, or the fiche named by its slug."""
+    if url == BurgerScraper.sitemap_url:
+        return response_from_fixture("burger_sitemap.xml")
+    return response_from_fixture(f"burger_fiche_{url.removeprefix(FICHE)}.html")
 
 
 class TestBurgerScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
@@ -35,100 +29,78 @@ class TestBurgerScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
     async def fetch_from_fixture(self) -> list[dict[str, Any]]:
         """Serve the sitemap and every fiche it lists from their fixtures."""
         with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get:
-            mock_get.side_effect = serve()
+            mock_get.side_effect = fake_get
             return await self.scraper_class().fetch_listings()
 
-    def test_parse_fiche(self) -> None:
-        """Every field comes from the fiche itself, not the similar-listing cards."""
-        page = Selector(
-            text=response_from_fixture("burger_fiche_geneve-studio-meuble.html").text
+    async def test_parses_every_fiche_of_the_sitemap(self) -> None:
+        """Each /fr/louer/ fiche of the sitemap gives one listing, read from its page."""
+        listings = {
+            x["external_url"].removeprefix(FICHE): x
+            for x in await self.fetch_from_fixture()
+        }
+
+        self.assertEqual(
+            {
+                slug: (
+                    x["price_chf"],
+                    x["nb_rooms"],
+                    x["surface_m2"],
+                    x["address"],
+                    x["city"],
+                )
+                for slug, x in listings.items()
+            },
+            {
+                "geneve-studio-meuble": (
+                    215000,
+                    1.0,
+                    36.0,
+                    "Rue du Mont-Blanc 17",
+                    "Genève",
+                ),
+                # The fiche shows "0.0 pièces": unknown, so None.
+                "geneve-appartement-de-charme-et-de-prestige": (
+                    700000,
+                    None,
+                    180.0,
+                    "Place du Bourg-de-Four 9",
+                    "Genève",
+                ),
+                # "Dès CHF 2'320.- + charges", no street nor NPA on the fiche.
+                "3-pieces-a-louer": (232000, 3.0, 60.0, "Quartier de Champel", None),
+                "le-lignon-parking-interne-au-1er-sous-sol": (
+                    11900,
+                    None,
+                    None,
+                    "Route du Bois-des-Frères 2 - 2 C",
+                    "Le Lignon",
+                ),
+            },
         )
-        scraper = BurgerScraper()
-        [node] = scraper.listing_nodes(page)
-
-        listing = scraper.parse_listing(node)
-
-        self.assertEqual(listing["external_url"], FICHE + "geneve-studio-meuble")
-        self.assertEqual(listing["external_id"], listing["external_url"])
-        self.assertEqual(listing["title"], "Studio meublé")
-        self.assertEqual(listing["price_chf"], 215000)
-        self.assertEqual(listing["nb_rooms"], 1.0)
-        self.assertEqual(listing["surface_m2"], 36.0)
-        self.assertEqual(listing["address"], "Rue du Mont-Blanc 17")
-        self.assertEqual(listing["city"], "Genève")
-        self.assertTrue(listing["description"].startswith("A louer, très beau studio"))
-        self.assertEqual(len(listing["images"]), 5)
-        for image in listing["images"]:
+        studio = listings["geneve-studio-meuble"]
+        self.assertEqual(studio["external_id"], studio["external_url"])
+        self.assertEqual(studio["title"], "Studio meublé")
+        self.assertTrue(studio["description"].startswith("A louer, très beau studio"))
+        self.assertEqual(len(studio["images"]), 5)
+        for image in studio["images"]:
             self.assertTrue(image.startswith("https://www.burger-sa.ch/corumfiles/"))
 
-    @patch("httpx.AsyncClient.get", new_callable=AsyncMock)
-    async def test_parses_every_fiche_of_the_sitemap(self, mock_get: AsyncMock) -> None:
-        """Each rental fiche of the sitemap is fetched; non-rental URLs are not."""
-        mock_get.side_effect = serve()
-
-        await BurgerScraper().fetch_listings()
-
-        self.assertEqual(
-            sorted(call.args[0] for call in mock_get.call_args_list),
-            sorted(
-                [
-                    BurgerScraper.sitemap_url,
-                    FICHE + "3-pieces-a-louer",
-                    FICHE + "geneve-appartement-de-charme-et-de-prestige",
-                    FICHE + "geneve-studio-meuble",
-                    FICHE + "le-lignon-parking-interne-au-1er-sous-sol",
-                ]
-            ),
-        )
-
-    async def test_returns_every_fiche(self) -> None:
-        """Every fiche becomes a listing; a "0.0 pièces" or a parking has no room count."""
-        listings = await self.fetch_from_fixture()
-
-        by_slug = {x["external_url"].removeprefix(FICHE): x for x in listings}
-        self.assertEqual(
-            sorted(by_slug),
-            [
-                "3-pieces-a-louer",
-                "geneve-appartement-de-charme-et-de-prestige",
-                "geneve-studio-meuble",
-                "le-lignon-parking-interne-au-1er-sous-sol",
-            ],
-        )
-        self.assertIsNone(
-            by_slug["geneve-appartement-de-charme-et-de-prestige"]["nb_rooms"]
-        )
-        self.assertIsNone(
-            by_slug["le-lignon-parking-interne-au-1er-sous-sol"]["nb_rooms"]
-        )
-        self.assertEqual(by_slug["3-pieces-a-louer"]["price_chf"], 232000)
-
-    @patch("httpx.AsyncClient.get", new_callable=AsyncMock)
-    async def test_a_sitemap_without_fiches_is_an_error(
-        self, mock_get: AsyncMock
-    ) -> None:
+    async def test_a_sitemap_without_fiches_is_an_error(self) -> None:
         """A sitemap format change must not pass for "Burger has nothing to rent"."""
-        mock_get.side_effect = serve(SITEMAP.replace("/fr/louer/", "/fr/rent/"))
+        client = AsyncMock()
+        client.get.return_value = MagicMock(
+            text="<urlset><url><loc>https://www.burger-sa.ch/fr</loc></url></urlset>"
+        )
 
         with self.assertRaises(ValueError):
-            await BurgerScraper().fetch_listings()
+            await BurgerScraper().listing_pages(client)
 
-    @patch("httpx.AsyncClient.get", new_callable=AsyncMock)
-    async def test_an_unreadable_fiche_is_logged(self, mock_get: AsyncMock) -> None:
-        """A fiche without its rent block (markup change) is logged and skipped."""
-        fiches = serve()
+    def test_an_unreadable_fiche_is_logged_and_skipped(self) -> None:
+        """A fiche without its rent block (markup change) is logged, not parsed."""
+        page = Selector(
+            text=f'<link href="{FICHE}x" rel="canonical"><h1>Studio meublé</h1>'
+        )
 
-        def get(url: str) -> MagicMock:
-            if url == FICHE + "geneve-studio-meuble":
-                return MagicMock(
-                    text=f'<html><head><link href="{url}" rel="canonical" /></head>'
-                    "<body><h1>Studio meublé</h1></body></html>"
-                )
-            return fiches(url)
-
-        mock_get.side_effect = get
         with self.assertLogs("flatpulse.scrapers.sources.burger", "WARNING") as logs:
-            listings = await BurgerScraper().fetch_listings()
-
-        self.assertIn("geneve-studio-meuble", logs.output[0])
-        self.assertEqual(len(listings), 3)
+            self.assertEqual(BurgerScraper().listing_nodes(page), [])
+        self.assertIn(FICHE + "x", logs.output[0])
