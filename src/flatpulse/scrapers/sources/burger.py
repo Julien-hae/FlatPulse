@@ -1,5 +1,6 @@
 """Burger Immobilier scraper."""
 
+from itertools import count
 from typing import Any
 from urllib.parse import urljoin
 
@@ -40,24 +41,22 @@ class BurgerScraper(HttpScraper):
         }
 
     async def fetch_listings(self) -> list[dict[str, Any]]:
-        """Fetch every result page; cards without a room count (parkings) are dropped."""
-        listings: list[dict[str, Any]] = []
-        page_number, last_page = 1, 1
+        """Walk ?page=1, 2… until a page brings no new card (infinite scroll, no page count).
+
+        Cards without a room count (parkings, commercial units) are dropped.
+        """
+        listings: dict[str, dict[str, Any]] = {}
         async with httpx.AsyncClient() as client:
-            while page_number <= last_page:
+            for page_number in count(1):
                 response = await client.get(f"{self.base_url}?page={page_number}")
                 response.raise_for_status()
                 page = Selector(text=response.text)
-                if page_number == 1:
-                    last_page = self._last_page(page)
-                listings += [
-                    self._build_listing(self.parse_listing(node))
-                    for node in self.listing_nodes(page)
-                ]
-                page_number += 1
-        return [listing for listing in listings if listing["nb_rooms"] is not None]
-
-    @staticmethod
-    def _last_page(page: Selector) -> int:
-        """Highest page number linked from the page, 1 when there is no pagination."""
-        return max(map(int, page.css("a::attr(href)").re(r"[?&]page=(\d+)")), default=1)
+                seen = len(listings)
+                for node in self.listing_nodes(page):
+                    listing = self._build_listing(self.parse_listing(node))
+                    listings.setdefault(listing["external_url"], listing)
+                if len(listings) == seen:
+                    break
+        return [
+            listing for listing in listings.values() if listing["nb_rooms"] is not None
+        ]

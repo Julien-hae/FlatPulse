@@ -97,6 +97,7 @@ fiches distinctes. À recalculer au prochain passage du notebook.
 - Le slug peut mentir (35-pieces affiché 3.0 pièces) : faire foi au texte.
 - external_id = URL complète : deux fiches partagent le préfixe …mont-bla.
 - Le listing mélange logements, commerces et parkings : filtrer.
+- Scroll infini, aucun numéro de page affiché : boucler sur ?page=N jusqu'à une page sans nouvelle fiche.
 
 ## Comptoir Immobilier (`comptoir`)
 

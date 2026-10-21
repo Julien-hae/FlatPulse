@@ -48,3 +48,20 @@ class TestBurgerScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
         self.assertNotIn(
             "parking", " ".join(listing["external_url"] for listing in listings)
         )
+
+    @patch("httpx.AsyncClient.get", new_callable=AsyncMock)
+    async def test_stops_when_a_page_brings_nothing_new(
+        self, mock_get: AsyncMock
+    ) -> None:
+        """Infinite scroll gives no page count: walk pages until one repeats or is empty."""
+        mock_get.return_value = response_from_fixture(self.fixture_name)
+
+        await self.scraper_class().fetch_listings()
+
+        self.assertEqual(
+            [call.args[0] for call in mock_get.call_args_list],
+            [
+                "https://burger-sa.ch/fr/louer?page=1",
+                "https://burger-sa.ch/fr/louer?page=2",
+            ],
+        )
