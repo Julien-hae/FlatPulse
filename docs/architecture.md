@@ -574,3 +574,9 @@ d'implémenter les stories concernées.
 8. **Redis.** Prévu dans le docker-compose (#63) et l'infra, mais le MVP fonctionne avec
    des dicts en mémoire (rate limiter, dedup, cache LLM). Ne le brancher que quand le
    multi-worker l'impose.
+9. **Débit des scrapers multi-requêtes.** Le `RateLimiter` (§5.1) n'est appelé par
+   aucun scraper : `run()` ne fait qu'une pause avant `fetch_listings()`. Un scraper qui
+   enchaîne plusieurs requêtes par poll (Burger : sitemap + une requête par fiche, 28 le
+   21.10.2026 ; Comptoir et Rosset : pages) n'est donc pas bridé requête par requête.
+   Cible : un `acquire(slug)` avant chaque requête, avec le `rate_limit_rpm` de la table
+   `sources`.
