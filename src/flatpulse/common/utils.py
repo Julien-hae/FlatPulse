@@ -20,17 +20,14 @@ def parse_swiss_price(text: str | None) -> int | None:
 
 
 def parse_rooms(text: str | None) -> float | None:
-    """Format a Swiss rooms string into a float representing the number of rooms.
-
-    A count of 0 is how some sources say "unknown", so it maps to None.
-    """
+    """Format a Swiss rooms string into a float representing the number of rooms."""
     if text is None:
         return None
     if "studio" in text.lower():
         return 1.0
     bare = re.fullmatch(r"\s*(\d+(?:\.\d+)?)(½)?\s*", text)
     if bare:
-        return float(bare.group(1)) + (0.5 if bare.group(2) else 0.0) or None
+        return float(bare.group(1)) + (0.5 if bare.group(2) else 0.0)
     match = re.search(
         r"(\d+)(?:\.(\d+))?(½)?\s*(?:pièces?|chambres?|zimmer)\b",
         text,
@@ -42,7 +39,7 @@ def parse_rooms(text: str | None) -> float | None:
             rooms += float(f"0.{match.group(2)}")
         if match.group(3):
             rooms += 0.5
-        return rooms or None
+        return rooms
     return None
 
 

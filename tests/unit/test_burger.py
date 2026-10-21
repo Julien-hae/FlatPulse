@@ -120,6 +120,26 @@ class TestBurgerScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
         )
 
     @patch("httpx.AsyncClient.get", new_callable=AsyncMock)
+    async def test_new_fiches_come_before_changed_ones(
+        self, mock_get: AsyncMock
+    ) -> None:
+        """A brand-new fiche is not delayed behind fiches whose lastmod moved."""
+        studio = r"<url>\s*<loc>[^<]*geneve-studio-meuble</loc>.*?</url>\s*"
+        scraper = BurgerScraper()
+        mock_get.side_effect = serve(re.sub(studio, "", SITEMAP, flags=re.S))
+        await scraper.fetch_listings()
+
+        mock_get.reset_mock()
+        scraper.max_fiches_per_poll = 1
+        mock_get.side_effect = serve(SITEMAP.replace("2026-10-21", "2026-10-22"))
+        await scraper.fetch_listings()
+
+        self.assertEqual(
+            requested(mock_get),
+            [BurgerScraper.sitemap_url, FICHE + "geneve-studio-meuble"],
+        )
+
+    @patch("httpx.AsyncClient.get", new_callable=AsyncMock)
     async def test_caps_fiches_per_poll(self, mock_get: AsyncMock) -> None:
         """A cold start downloads at most max_fiches_per_poll fiches, the rest next poll."""
         scraper = BurgerScraper()

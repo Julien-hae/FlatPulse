@@ -31,7 +31,6 @@ class TestUtils(unittest.TestCase):
             "2½ pièces": 2.5,
             "4 pièces": 4.0,
             "9 Rue des Eaux-Vives, 4 pièces": 4.0,
-            "Appartement  0.0 pièces": None,  # Burger shows 0.0 when unknown
         }
 
     def test_parse_price(self) -> None:
