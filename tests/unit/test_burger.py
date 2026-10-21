@@ -59,9 +59,26 @@ class TestBurgerScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
         await self.scraper_class().fetch_listings()
 
         self.assertEqual(
-            [call.args[0] for call in mock_get.call_args_list],
+            [call.args[0] for call in mock_get.call_args_list][:2],
             [
-                "https://burger-sa.ch/fr/louer?page=1",
-                "https://burger-sa.ch/fr/louer?page=2",
+                "https://www.burger-sa.ch/fr/louer?page=1",
+                "https://www.burger-sa.ch/fr/louer?page=2",
             ],
         )
+
+    @patch("httpx.AsyncClient.get", new_callable=AsyncMock)
+    async def test_warns_about_sitemap_listings_missing_from_pages(
+        self, mock_get: AsyncMock
+    ) -> None:
+        """Every /fr/louer/ fiche of the sitemap not reached by scrolling is logged."""
+        mock_get.side_effect = lambda url: response_from_fixture(
+            "burger_sitemap.txt" if "sitemap" in url else self.fixture_name
+        )
+
+        with self.assertLogs("flatpulse.scrapers.sources.burger", "WARNING") as logs:
+            await self.scraper_class().fetch_listings()
+
+        warning = logs.output[0]
+        self.assertIn("23", warning)  # 27 fiches in the sitemap, 4 on the pages
+        self.assertIn("/fr/louer/geneve-studio-meuble", warning)
+        self.assertNotIn("/fr/louer/3-pieces-a-louer", warning)
