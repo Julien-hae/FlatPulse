@@ -17,7 +17,7 @@ class BurgerScraper(HttpScraper):
 
     def listing_nodes(self, page: Selector) -> list[Selector]:
         """The sitemap entries of the rental fiches."""
-        return page.xpath("//loc[contains(text(), '/fr/louer/')]")
+        return page.xpath("//*[local-name()='loc'][contains(text(), '/fr/louer/')]")
 
     def parse_listing(self, node: Selector) -> dict[str, Any]:
         """Download a fiche from its sitemap entry and extract the listing."""
