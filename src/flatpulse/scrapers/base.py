@@ -43,10 +43,9 @@ class HttpScraper(AbstractScraper):
 
     base_url: str
 
-    @abstractmethod
     def listing_nodes(self, page: Selector) -> list[Selector]:
-        """Return one Selector per listing found on the parsed page."""
-        raise NotImplementedError
+        """Return one Selector per listing found on the page; the page itself by default."""
+        return [page]
 
     @abstractmethod
     def parse_listing(self, node: Selector) -> dict[str, Any]:

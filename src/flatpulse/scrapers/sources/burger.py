@@ -1,6 +1,5 @@
 """Scraper for Burger Immobilier: the sitemap lists every fiche, each fiche is a listing."""
 
-import logging
 from typing import Any
 from urllib.parse import urljoin
 
@@ -10,41 +9,20 @@ from parsel import Selector
 from flatpulse.common.utils import parse_rooms, parse_surface, parse_swiss_price
 from flatpulse.scrapers.base import HttpScraper
 
-LOGGER = logging.getLogger(__name__)
-
-SITE = "https://www.burger-sa.ch/"
-
 
 class BurgerScraper(HttpScraper):
-    """Scrape Burger rentals: sitemap.php lists every fiche, each fiche is parsed.
+    """Scrape every rental fiche listed in Burger's sitemap."""
 
-    The /fr/louer listing loads through infinite scroll; the sitemap is the complete
-    list of rental fiches (docs/spike-agencies.md).
-    """
-
-    base_url = SITE + "fr/louer"
-    sitemap_url = SITE + "sitemap.php"
+    base_url = "https://www.burger-sa.ch/"
 
     async def listing_pages(self, client: httpx.AsyncClient) -> list[str]:
-        """Every rental fiche listed in the sitemap."""
-        sitemap = Selector(text=await self._get(client, self.sitemap_url), type="xml")
+        """Rental fiches listed in the sitemap."""
+        xml = await self._get(client, urljoin(self.base_url, "sitemap.php"))
+        sitemap = Selector(text=xml, type="xml")
         sitemap.remove_namespaces()
-        urls = [
-            url
-            for url in sitemap.xpath("//loc/text()").getall()
-            if url.startswith(self.base_url + "/")
+        return [
+            url for url in sitemap.xpath("//loc/text()").getall() if "/fr/louer/" in url
         ]
-        if not urls:
-            raise ValueError("Sitemap Burger sans fiche /fr/louer/ : format changé ?")
-        return urls
-
-    def listing_nodes(self, page: Selector) -> list[Selector]:
-        """The fiche page, unless its details block is missing (markup changed)."""
-        if not page.css("div.space-y-4.mt-6"):
-            url = page.css("link[rel=canonical]::attr(href)").get()
-            LOGGER.warning("Fiche Burger illisible : %s", url)
-            return []
-        return [page]
 
     def parse_listing(self, node: Selector) -> dict[str, Any]:
         """Extract the listing from a fiche page."""
@@ -64,7 +42,7 @@ class BurgerScraper(HttpScraper):
             "city": address[1].split(maxsplit=1)[1] if len(address) > 1 else None,
             "description": node.css("div.prose").xpath("normalize-space()").get(),
             "images": [
-                urljoin(SITE, src)
+                urljoin(self.base_url, src)
                 for src in node.css("div.swiper-slide img::attr(data-src)").getall()
             ],
         }
