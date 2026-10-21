@@ -84,11 +84,11 @@ fiches distinctes. À recalculer au prochain passage du notebook.
 | URL / id | `link[rel=canonical]::attr(href)` |
 | titre | `h1::text` |
 | description | `div.prose` (texte) |
-| encart principal | `//div[div/div[normalize-space()='Loyer']]` (exclut les cartes « Ces biens pourraient vous intéresser » plus bas) |
-| prix | dans l'encart, le `div` qui suit « Loyer » |
-| rue / NPA ville | dans l'encart, `div.space-y-4.mt-6 div.text-base` (deux lignes séparées par `<br>`) |
-| type / pièces / surface | dans l'encart, `div.space-y-4.mt-6 div.text-sm` |
-| images | `div.swiper-slide img::attr(data-src)`, relatives au `<base href="https://www.burger-sa.ch/">` |
+| prix | `//div[text()='Loyer']/following-sibling::div/text()` |
+| bloc de détails | `div.space-y-4.mt-6` — unique, absent des cartes « Ces biens pourraient vous intéresser » |
+| rue / NPA ville | dans ce bloc, `div.text-base::text` (deux lignes séparées par `<br>`) |
+| type / pièces / surface | dans ce bloc, `div.text-sm::text` |
+| images | `div.swiper-slide img::attr(data-src)`, relatives à `https://www.burger-sa.ch/` |
 
 ### Pièges
 
@@ -100,7 +100,7 @@ fiches distinctes. À recalculer au prochain passage du notebook.
 - Type de bien = première ligne des caractéristiques : Appartement, Studio, Maison ; Place ouverte, Bureau, Arcade, Garage individuel, Dépôt, Commerce. Non filtré par le scraper.
 - « 0.0 pièces » affiché quand le nombre est inconnu : c'est `None`.
 - Le 21.10.2026, une fiche sur six enchaînées a coupé la connexion sans réponse (`RemoteProtocolError`), puis répondu normalement : raison de plus pour espacer les requêtes.
-- Une fiche sans bloc « Loyer » est un changement de markup : elle est loguée.
+- Une fiche sans bloc de détails est un changement de markup : elle est loguée.
 
 ## Comptoir Immobilier (`comptoir`)
 

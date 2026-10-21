@@ -96,7 +96,7 @@ class TestBurgerScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
             await BurgerScraper().listing_pages(client)
 
     def test_an_unreadable_fiche_is_logged_and_skipped(self) -> None:
-        """A fiche without its rent block (markup change) is logged, not parsed."""
+        """A fiche without its details block (markup change) is logged, not parsed."""
         page = Selector(
             text=f'<link href="{FICHE}x" rel="canonical"><h1>Studio meublé</h1>'
         )
