@@ -121,7 +121,8 @@ class TestBurgerScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
         def get(url: str) -> MagicMock:
             if url == FICHE + "geneve-studio-meuble":
                 return MagicMock(
-                    text="<html><body><h1>Studio meublé</h1></body></html>"
+                    text=f'<html><head><link href="{url}" rel="canonical" /></head>'
+                    "<body><h1>Studio meublé</h1></body></html>"
                 )
             return fiches(url)
 

@@ -58,21 +58,28 @@ class HttpScraper(AbstractScraper):
         """
         raise NotImplementedError
 
-    async def _get_html(self) -> str:
-        """Fetch the HTML content of the base URL."""
-        async with httpx.AsyncClient() as client:
-            response = await client.get(self.base_url)
-        response.raise_for_status()
-        return response.text
+    async def listing_pages(self, client: httpx.AsyncClient) -> list[str]:
+        """URLs of the pages to parse; a single listing page by default."""
+        return [self.base_url]
 
     async def fetch_listings(self) -> list[dict[str, Any]]:
-        """Download the listing page and parse it into a list of dicts."""
-        html = await self._get_html()
-        page = Selector(text=html)
-        return [
-            self._build_listing(self.parse_listing(node))
-            for node in self.listing_nodes(page)
-        ]
+        """Download every listing page and parse it into a list of dicts."""
+        listings: list[dict[str, Any]] = []
+        async with httpx.AsyncClient() as client:
+            for url in await self.listing_pages(client):
+                page = Selector(text=await self._get(client, url))
+                listings += [
+                    self._build_listing(self.parse_listing(node))
+                    for node in self.listing_nodes(page)
+                ]
+        return listings
+
+    @staticmethod
+    async def _get(client: httpx.AsyncClient, url: str) -> str:
+        """GET a page and return its body, raising on HTTP errors."""
+        response = await client.get(url)
+        response.raise_for_status()
+        return str(response.text)
 
     def _build_listing(self, raw: dict[str, Any]) -> dict[str, Any]:
         """Build a complete listing dict from raw parsed data.

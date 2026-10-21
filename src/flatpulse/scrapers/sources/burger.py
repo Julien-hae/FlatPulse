@@ -29,8 +29,29 @@ class BurgerScraper(HttpScraper):
     base_url = "https://www.burger-sa.ch/fr/louer"
     sitemap_url = "https://www.burger-sa.ch/sitemap.php"
 
+    async def listing_pages(self, client: httpx.AsyncClient) -> list[str]:
+        """Every rental fiche listed in the sitemap."""
+        sitemap = Selector(text=await self._get(client, self.sitemap_url), type="xml")
+        sitemap.remove_namespaces()
+        urls = [
+            url
+            for url in sitemap.xpath("//url/loc/text()").getall()
+            if url.startswith(f"{self.base_url}/")
+        ]
+        if not urls:
+            raise ValueError(
+                f"Sitemap Burger sans fiche {self.base_url}/… : format changé ?"
+            )
+        return urls
+
     def listing_nodes(self, page: Selector) -> list[Selector]:
-        """A fiche page describes a single listing."""
+        """A fiche page is one listing; without its rent block, the markup changed."""
+        if not page.xpath(_MAIN_BLOCK):
+            LOGGER.warning(
+                "Fiche Burger illisible, bloc Loyer absent : %s",
+                page.css("link[rel=canonical]::attr(href), h1::text").get(),
+            )
+            return []
         return [page]
 
     def parse_listing(self, node: Selector) -> dict[str, Any]:
@@ -64,40 +85,8 @@ class BurgerScraper(HttpScraper):
             ],
         }
 
-    async def fetch_listings(self) -> list[dict[str, Any]]:
-        """List every rental fiche from the sitemap, then parse each fiche."""
-        listings: list[dict[str, Any]] = []
-        async with httpx.AsyncClient() as client:
-            sitemap = Selector(
-                text=await self._get(client, self.sitemap_url), type="xml"
-            )
-            sitemap.remove_namespaces()
-            urls = [
-                url
-                for url in sitemap.xpath("//url/loc/text()").getall()
-                if url.startswith(f"{self.base_url}/")
-            ]
-            if not urls:
-                raise ValueError(
-                    f"Sitemap Burger sans fiche {self.base_url}/… : format changé ?"
-                )
-            for url in urls:
-                page = Selector(text=await self._get(client, url))
-                if not page.xpath(_MAIN_BLOCK):
-                    LOGGER.warning("Fiche Burger %s illisible : bloc Loyer absent", url)
-                    continue
-                listings.append(self._build_listing(self.parse_listing(page)))
-        return listings
-
     @staticmethod
     def _features(page: Selector) -> str:
         """Type, rooms and surface lines of the fiche, e.g. "Studio 1.0 pièces 36 m2"."""
         texts = page.xpath(_MAIN_BLOCK).css(f"{_DETAILS} div.text-sm::text").getall()
         return " ".join(texts).strip()
-
-    @staticmethod
-    async def _get(client: httpx.AsyncClient, url: str) -> str:
-        """GET a page and return its body, raising on HTTP errors."""
-        response = await client.get(url)
-        response.raise_for_status()
-        return str(response.text)
