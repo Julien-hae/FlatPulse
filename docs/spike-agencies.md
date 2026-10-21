@@ -81,7 +81,7 @@ fiches distinctes. À recalculer au prochain passage du notebook.
 
 | Champ | Sélecteur |
 |---|---|
-| URL / id | `link[rel=canonical]::attr(href)` |
+| URL / id | l'URL `<loc>` du sitemap (repli : `link[rel=canonical]::attr(href)`) |
 | titre | `h1::text` |
 | description | `div.prose` (texte) |
 | prix | `//div[text()='Loyer']/following-sibling::div/text()` |
