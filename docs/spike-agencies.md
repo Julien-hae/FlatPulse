@@ -98,6 +98,9 @@ fiches distinctes. À recalculer au prochain passage du notebook.
 - external_id = URL complète : deux fiches partagent le préfixe …mont-bla.
 - Le listing mélange logements, commerces et parkings : filtrer.
 - Scroll infini, aucun numéro de page affiché : boucler sur ?page=N jusqu'à une page sans nouvelle fiche, puis comparer au sitemap.php (référence complète des fiches /fr/louer/).
+- Mesuré le 21.10.2026 : 5 pages (6+6+6+6+3 cartes) puis des pages vides. Le lien `a.pagination__next` ne disparaît jamais (il pointe vers ?page=100 depuis la page 99) : s'arrêter sur « aucune nouvelle carte », pas sur l'absence de lien. Les 27 fiches des pages = les 27 fiches du sitemap.
+- Type de bien = début de la première ligne d'icônes : Appartement, Studio, Maison (logements) ; Place ouverte, Bureau, Arcade, Garage individuel, Dépôt, Commerce (à écarter).
+- Le site affiche « 0.0 pièces » quand le nombre est inconnu : c'est `None`, pas 0.
 - Hôte canonique www.burger-sa.ch (celui du sitemap) : sans www, aucune URL ne correspond.
 
 ## Comptoir Immobilier (`comptoir`)

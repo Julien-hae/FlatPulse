@@ -14,6 +14,9 @@ from flatpulse.scrapers.base import HttpScraper
 
 LOGGER = logging.getLogger(__name__)
 
+# Type label opening a card's first icon row; others are Bureau, Commerce, Dépôt, Place…
+_DWELLING = re.compile(r"^\s*(Appartement|Studio|Maison)\b")
+
 
 class BurgerScraper(HttpScraper):
     """Scraper for Burger Immobilier listings."""
@@ -37,7 +40,9 @@ class BurgerScraper(HttpScraper):
             "external_id": url,
             "title": node.css("h2::text").get(),
             "price_chf": parse_swiss_price(node.css("div.font-bold::text").get()),
-            "nb_rooms": parse_rooms(features),
+            "nb_rooms": parse_rooms(features)
+            or None,  # the site shows 0.0 when unknown
+            "is_dwelling": bool(_DWELLING.match(features)),
             "surface_m2": parse_surface(features),
             "images": [
                 urljoin(self.base_url, src)
@@ -49,10 +54,11 @@ class BurgerScraper(HttpScraper):
         """Walk ?page=1, 2… until a page brings no new card (infinite scroll, no page count).
 
         The sitemap then serves as the reference: any rental fiche it lists that the
-        pages did not return is logged. Cards without a room count (parkings,
-        commercial units) are dropped.
+        pages did not return is logged. Only dwellings are returned (not parkings,
+        offices, shops or storage).
         """
         listings: dict[str, dict[str, Any]] = {}
+        dwellings: set[str] = set()
         async with httpx.AsyncClient() as client:
             for page_number in count(1):
                 response = await client.get(f"{self.base_url}?page={page_number}")
@@ -60,8 +66,11 @@ class BurgerScraper(HttpScraper):
                 page = Selector(text=response.text)
                 seen = len(listings)
                 for node in self.listing_nodes(page):
-                    listing = self._build_listing(self.parse_listing(node))
+                    raw = self.parse_listing(node)
+                    listing = self._build_listing(raw)
                     listings.setdefault(listing["external_url"], listing)
+                    if raw["is_dwelling"]:
+                        dwellings.add(listing["external_url"])
                 if len(listings) == seen:
                     break
             sitemap = await client.get(self.sitemap_url)
@@ -73,6 +82,4 @@ class BurgerScraper(HttpScraper):
                 len(missing),
                 missing,
             )
-        return [
-            listing for listing in listings.values() if listing["nb_rooms"] is not None
-        ]
+        return [listing for url, listing in listings.items() if url in dwellings]

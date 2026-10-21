@@ -1,7 +1,7 @@
 """Unit tests for the Burger Immobilier scraper."""
 
 import unittest
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from parsel import Selector
 
@@ -82,3 +82,33 @@ class TestBurgerScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
         self.assertIn("23", warning)  # 27 fiches in the sitemap, 4 on the pages
         self.assertIn("/fr/louer/geneve-studio-meuble", warning)
         self.assertNotIn("/fr/louer/3-pieces-a-louer", warning)
+
+    @patch("httpx.AsyncClient.get", new_callable=AsyncMock)
+    async def test_keeps_dwellings_by_type_and_never_zero_rooms(
+        self, mock_get: AsyncMock
+    ) -> None:
+        """Dwellings are told apart by their type label; a site-side 0.0 rooms is unknown."""
+        card = (
+            '<div class="bien-item"><a href="/fr/louer/{slug}"></a>'
+            '<div class="font-bold">CHF 1\'000.-</div><h2>Genève</h2>'
+            '<div class="text-primary">{kind}</div></div>'
+        )
+        html = "".join(
+            card.format(slug=slug, kind=kind)
+            for slug, kind in [
+                ("charme", "Appartement  0.0 pièces"),
+                ("villa", "Maison  5.0 pièces"),
+                ("depot", "Dépôt"),
+                ("parking", "Place ouverte"),
+            ]
+        )
+        mock_get.side_effect = lambda url: MagicMock(
+            text=html if url.endswith("page=1") else ""
+        )
+
+        listings = await self.scraper_class().fetch_listings()
+
+        self.assertEqual(
+            [(x["external_url"].rsplit("/", 1)[-1], x["nb_rooms"]) for x in listings],
+            [("charme", None), ("villa", 5.0)],
+        )
