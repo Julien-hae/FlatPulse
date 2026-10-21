@@ -19,8 +19,15 @@ class ScraperContractMixin:
     fixture_name: str
 
     async def fetch_from_fixture(self) -> list[dict[str, Any]]:
-        """Run a fresh scraper against the frozen fixture."""
-        with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get:
+        """Run a fresh scraper against the frozen fixture.
+
+        `asyncio.sleep` is patched out so a scraper that paces multiple requests
+        (e.g. pagination) doesn't slow down every contract test that uses it.
+        """
+        with (
+            patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get,
+            patch("asyncio.sleep", new_callable=AsyncMock),
+        ):
             mock_get.return_value = response_from_fixture(self.fixture_name)
             return await self.scraper_class().fetch_listings()
 
