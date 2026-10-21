@@ -242,11 +242,6 @@ implémentation nécessaire : le spike a confirmé qu'aucune des 13 régies anal
 requiert un navigateur headless. Les sources « JS-rendered » (Naef, Bory, Rosset,
 Bernard Nicod) exposent toutes un endpoint JSON ou un état hydraté qu'on lit directement.
 
-`fetch_listings()` parse chaque URL renvoyée par `listing_pages()` (par défaut la seule
-`base_url`) : GET → `listing_nodes()` (par défaut la page elle-même) → `parse_listing()`.
-Burger ne surcharge que `listing_pages()` (les fiches du `sitemap.php`) et
-`parse_listing()`.
-
 Chaque dict produit porte au minimum `external_id`, `external_url`, `title`, plus
 `price_chf`, `nb_rooms`, `surface_m2`, `floor`, `address`, `city`, `description`,
 `images` en optionnel — **`None` si absent, jamais d'exception, jamais `0`**.

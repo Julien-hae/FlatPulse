@@ -32,11 +32,13 @@ class TestBurgerScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
     scraper_class = BurgerScraper
 
     async def fetch_from_fixture(self) -> list[dict[str, Any]]:
-        """Serve the sitemap and its rental fiche."""
-        with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get:
-            mock_get.side_effect = lambda url: MagicMock(
-                text=SITEMAP if url.endswith("sitemap.php") else FICHE
-            )
+        """Serve the sitemap, then its rental fiche."""
+        with (
+            patch(
+                "httpx.AsyncClient.get", AsyncMock(return_value=MagicMock(text=SITEMAP))
+            ),
+            patch("httpx.get", return_value=MagicMock(text=FICHE)),
+        ):
             return await self.scraper_class().fetch_listings()
 
     async def test_parses_each_rental_fiche_of_the_sitemap(self) -> None:
