@@ -13,6 +13,7 @@ class ComptoirScraper(HttpScraper):
     """Scrape rental listings from the Comptoir Immobilier catalogue."""
 
     base_url = "https://comptoir-immo.ch/location/"
+    rate_limit_seconds = 6
 
     def listing_nodes(self, page: Selector) -> list[Selector]:
         """Return one node per property card on the page."""
@@ -55,11 +56,11 @@ class ComptoirScraper(HttpScraper):
         rooms = next((tag for tag in tags if "pièce" in tag.lower()), None)
         return {
             "title": self._get_title(node),
-            "type": self._get_type(node),
+            "type": self._field(node, label="Type de bien"),
             "address": self._get_adress(node),
             "external_url": node.css("a:has(h2)::attr(href)").get(),
             "price_chf": parse_swiss_price(node.css("div.heading-4::text").get()),
-            "surface_m2": self._get_surface(node),
+            "surface_m2": self._field(node, label="Surface habitable"),
             "nb_rooms": parse_rooms(rooms),
             "external_id": self._get_id(node),
             "description": self._get_description(node),
@@ -106,3 +107,9 @@ class ComptoirScraper(HttpScraper):
     def _card_url(node: Selector) -> str | None:
         """Return the card URL, used to name the faulty listing in error messages."""
         return node.css("a:has(h2)::attr(href)").get()
+
+    def _field(self, node: Selector, label: str) -> str | None:
+        """Return the <td> text next to the <th> whose label matches."""
+        return node.xpath(
+            f"//th[normalize-space()='{label}']/following-sibling::td[1]/text()"
+        ).get()
