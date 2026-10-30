@@ -163,7 +163,7 @@ fiches distinctes. À recalculer au prochain passage du notebook.
 ### Pièges
 
 - Les filtres transaction/type/category sont ignorés : la réponse ne bouge pas.
-- L'API mélange location et vente, et tous les cantons : filtrer côté scraper.
+- L'API mélange location et vente, et tous les cantons : tout remonter et étiqueter (`listing_type`, `canton`), ne rien écarter.
 
 ## Bory & Cie (`bory`)
 

@@ -8,9 +8,12 @@ Side project, ~5 h/semaine, hébergé sur un VPS Infomaniak à ~CHF 7/mois. Le s
 rentabilité est d'un client. Toute solution qui coûte cher en temps ou en argent est
 hors sujet.
 
-**Le MVP couvre le canton de Genève uniquement.** Les régies scrapées sont romandes ;
-une extension alémanique demanderait son propre spike. Utiliser des villes genevoises
-dans les exemples et les fixtures, pas Zürich.
+**Les scrapers remontent toute l'offre des régies, sans rien écarter** (décision du
+30.10.2026) : logements, parkings, commerces, dépôts, tous cantons confondus. Ils
+**étiquettent** chaque annonce (`property_type`, `canton`, `postal_code`) ; les filtres
+viendront plus tard, en aval. Les régies scrapées sont romandes et le public visé est
+genevois ; une extension alémanique demanderait son propre spike. Utiliser des villes
+genevoises dans les exemples et les fixtures, pas Zürich.
 
 ## Où est la vérité
 
