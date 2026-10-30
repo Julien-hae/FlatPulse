@@ -35,11 +35,11 @@ class TestUtils(unittest.TestCase):
 
     def test_parse_price(self) -> None:
         for test, expected in self.prices_test_set.items():
-            self.assertEqual(parse_swiss_price(test), expected)
+            self.assertEqual(parse_swiss_price(test), expected, test)
 
     def test_parse_rooms(self) -> None:
         for test, expected in self.rooms_test_set.items():
-            self.assertEqual(parse_rooms(test), expected)
+            self.assertEqual(parse_rooms(test), expected, test)
 
     def test_config_missing_var_raises(self) -> None:
         """Test that missing required environment variables raise a SystemExit."""

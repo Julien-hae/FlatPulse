@@ -48,7 +48,7 @@ fiches distinctes. À recalculer au prochain passage du notebook.
 |---|---|
 | `external_id` | `no_dossier` |
 | `external_url` | `link` |
-| `description` | `intitule_plaquette` |
+| `title` | `intitule_plaquette`, sinon `type_designation_fr` |
 | `price_chf` | `loyer_mensuel_brut` |
 | `nb_rooms` | `nb_pieces` |
 | `surface_m2` | `surface_habitable` |

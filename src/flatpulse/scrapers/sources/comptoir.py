@@ -54,7 +54,9 @@ class ComptoirScraper(HttpScraper):
         ]
         rooms = next((tag for tag in tags if "pièce" in tag.lower()), None)
         return {
-            "title": node.css("h2").xpath("normalize-space()").get(),
+            "title": self._get_title(node),
+            "type": self._get_type(node),
+            "address": self._get_adress(node),
             "external_url": node.css("a:has(h2)::attr(href)").get(),
             "price_chf": parse_swiss_price(node.css("div.heading-4::text").get()),
             "surface_m2": self._get_surface(node),
@@ -62,6 +64,13 @@ class ComptoirScraper(HttpScraper):
             "external_id": self._get_id(node),
             "description": self._get_description(node),
         }
+
+    def _get_title(self, node: Selector) -> str:
+        """Return the card heading, or 'type, location' when the <h2> is empty."""
+        title = node.css("h2").xpath("normalize-space()").get()
+        if title:
+            return title
+        return f"{self._get_type(node)}, {self._get_adress(node)}"
 
     def _get_id(self, node: Selector) -> str:
         """Return the listing slug from the card URL (no reference on the list page)."""
@@ -78,3 +87,22 @@ class ComptoirScraper(HttpScraper):
         """Return the surface in m2."""
         surface = node.css("div.inline-block").xpath("normalize-space()").get()
         return parse_surface(surface)
+
+    def _get_type(self, node: Selector) -> str:
+        """Return the property type, shown as the first tag of the card."""
+        property_type = node.css("div.inline-block").xpath("normalize-space()").get()
+        if not property_type:
+            raise ValueError(f"Property type is not defined: {self._card_url(node)}")
+        return property_type
+
+    def _get_adress(self, node: Selector) -> str:
+        """Return the location line of the card ('Ville, Canton')."""
+        address = node.css("div.opacity-80").xpath("normalize-space()").get()
+        if not address:
+            raise ValueError(f"Address not found: {self._card_url(node)}")
+        return address
+
+    @staticmethod
+    def _card_url(node: Selector) -> str | None:
+        """Return the card URL, used to name the faulty listing in error messages."""
+        return node.css("a:has(h2)::attr(href)").get()

@@ -38,8 +38,8 @@ class ScraperContractMixin:
         assert isinstance(self, unittest.TestCase)
         for listing in result:
             for field in REQUIRED_FIELDS:
-                self.assertTrue(listing.get(field), field)
-            self.assertTrue(listing["external_url"].startswith("http"))
+                self.assertTrue(listing.get(field), f"{field}: {listing}")
+            self.assertTrue(listing["external_url"].startswith("http"), listing)
 
     async def test_contract_has_fingerprint(self) -> None:
         """Each listing carries a 64-character hex SHA-256 fingerprint."""
