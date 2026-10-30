@@ -32,11 +32,14 @@
                     Prometheus + Grafana (observabilité)
 ```
 
-**Périmètre du MVP : le canton de Genève uniquement.** Les 13 régies analysées sont
-romandes, et les volumes du spike sont comptés à Genève. Une extension vers Zurich ou le
-reste de la Suisse alémanique demanderait son propre spike (parc de régies, formats
-allemands, sites Immobilien) — ce n'est pas au programme pour l'instant. Les exemples de
-profils utilisateurs doivent donc utiliser des villes genevoises, pas Zürich.
+**Périmètre du MVP : toute l'offre des régies romandes scrapées** (décision du
+30.10.2026, qui remplace « Genève uniquement »). Les scrapers ne filtrent rien —
+parkings, commerces et annonces hors canton compris — et étiquettent chaque annonce
+(`property_type`, `canton`, `postal_code`) ; les filtres se font en aval. Le public visé
+reste genevois. Une extension vers Zurich ou le reste de la Suisse alémanique
+demanderait son propre spike (parc de régies, formats allemands, sites Immobilien) — ce
+n'est pas au programme pour l'instant. Les exemples de profils utilisateurs doivent donc
+utiliser des villes genevoises, pas Zürich.
 
 L'avantage concurrentiel tient en une phrase : **on va chercher l'annonce sur le site de
 la régie, pas sur un portail.** Les régies publient chez elles d'abord et syndiquent vers
@@ -381,8 +384,10 @@ données fausses silencieusement.
 - **Pagination fantôme** : `?page=2` peut renvoyer les mêmes cartes (Moser Vernet), et
   l'URL `/page-N/` un shell vide (Naef). Ne jamais paginer par URL sans l'avoir vérifié.
 - **Listings hétérogènes** : logements mélangés avec commerces et parkings (Burger),
-  location mélangée avec vente et tous cantons (Rosset). Filtrer côté scraper — les
-  paramètres de filtre de la source sont parfois ignorés côté serveur.
+  location mélangée avec vente et tous cantons (Rosset). **Étiqueter, ne pas écarter** :
+  le scraper remonte tout et renseigne `property_type`, `canton` (et `listing_type` pour
+  la vente) ; le filtrage se fait en aval. Ne pas se fier aux paramètres de filtre de la
+  source pour typer une annonce : ils sont parfois ignorés côté serveur.
 - **Canton** tantôt en toutes lettres, tantôt en code, parfois absent. La colonne est un
   `VARCHAR(2)` : normaliser.
 - **Poids des pages** : Moser Vernet = 2,9 Mo par poll, soit ~2,8 Go/jour à 90 s sans
@@ -559,7 +564,7 @@ d'implémenter les stories concernées.
    régie n'en a besoin, et que la seule bloquée (Grange) l'est par une empreinte TLS
    qu'un navigateur headless ne résout pas non plus. `BrowserScraper` relève donc de
    YAGNI tant qu'aucune source ne le justifie.
-5. **Exemples zurichois dans les stories.** Le MVP couvre Genève uniquement (§1), mais
+5. **Exemples zurichois dans les stories.** Le public visé est genevois (§1), mais
    les exemples de profils dans #54 et #58 utilisent Zürich, et #54 va jusqu'à tester
    qu'une annonce genevoise est *rejetée* pour un profil zurichois. Les tests restent
    valides — c'est le hard filter ville qui est vérifié, peu importe les villes — mais
@@ -579,7 +584,8 @@ d'implémenter les stories concernées.
    enchaîne plusieurs requêtes par poll (Burger : sitemap + une requête par fiche, 28 le
    21.10.2026 ; Comptoir et Rosset : pages) n'est donc pas bridé requête par requête.
    Cible : un `acquire(slug)` avant chaque requête, avec le `rate_limit_rpm` de la table
-   `sources`.
+   `sources` → story #121, qui corrige aussi la rafale au démarrage
+   du `TokenBucket` (capacité = `rpm`).
 10. **Comptoir : adresse et description absentes de la page liste.** Les cartes de
     `comptoir-immo.ch/location/` ne donnent que « Commune, Canton » et aucune
     description ; leur `data-property` est vide (`{"lat":"","lng":null,"price":null}`)

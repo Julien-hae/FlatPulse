@@ -66,10 +66,11 @@ Règles qui ne se négocient pas :
 - **Les montants sont en centimes** : `CHF 1'850.–` → `185000`.
 - **Champ absent → `None`, jamais `0`, jamais une exception.** Un prix sur demande à `0`
   traverse les hard filters et déclenche des notifications absurdes.
-- **Filtrer le bruit** : les listings mélangent logements, commerces, parkings, et
-  parfois location et vente, tous cantons confondus. Les paramètres de filtre de la
-  source sont parfois ignorés côté serveur — filtrer côté scraper.
-- **MVP = Genève.** Écarter ce qui est hors canton.
+- **Étiqueter, ne rien écarter** : les listings mélangent logements, commerces,
+  parkings, et parfois location et vente, tous cantons confondus. Le scraper remonte
+  **toute l'offre** et renseigne `property_type`, `canton`, `postal_code` ; le filtrage
+  se fait en aval. Ne pas typer une annonce d'après les paramètres de filtre de la
+  source : ils sont parfois ignorés côté serveur.
 - **`external_id` stable** : la clé de dedup est `source_slug:external_id`. Choisir un
   identifiant qui ne bouge pas entre deux polls et qui distingue vraiment deux fiches —
   attention aux régies dont les annonces partagent le même chemin d'URL et ne diffèrent
