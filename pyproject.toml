@@ -15,7 +15,7 @@ httpx = "^0.28.1"
 parsel = "^1.11.0"
 
 [tool.poetry.group.dev.dependencies]
-coverage = {extras = ["toml"], version = ">=7.4,<7.17"}    # Code coverage measurement for Python
+coverage = {extras = ["toml"], version = ">=7.4,<7.18"}    # Code coverage measurement for Python
 unittest-xml-reporting = "~3.2"                     # unittest-based test runner with Ant/JUnit like XML reporting.
 pre-commit = "~3.6"                                 # A framework for managing and maintaining multi-language pre-commit hooks.
 pre-commit-hooks = "~4.5"                           # Some out-of-the-box hooks for pre-commit.
