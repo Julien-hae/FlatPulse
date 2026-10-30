@@ -31,3 +31,11 @@ class TestComptoirScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase
             self.assertIsInstance(item["price_chf"], (int, type(None)))
             self.assertIsInstance(item["nb_rooms"], float)
             self.assertIsInstance(item["surface_m2"], (float, type(None)))
+
+    # async def test_parsing_on_one_page(self) -> None:
+    #     result = await ComptoirScraper().fetch_listings()
+    #     item = result[0]
+    #     self.assertEqual(item["external_id"], "123")
+    #     self.assertEqual(item["price_chf"], 360000)
+    #     self.assertEqual(item["title"], "Très bel appartement de 4 pièces avec jardin en plein coeur de Vésenaz.")
+    #     self.assertIsNone(item["surface_m2"])
