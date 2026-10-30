@@ -94,6 +94,9 @@ fermée avec un résumé.
 - **Nouveau scraper** = fixture figée dans `tests/fixtures/` + test dédié + les 4
   contrats de `ScraperContractMixin`, et mise à jour de `docs/spike-agencies.md` si la
   source a changé de comportement.
+- **Fixtures : URLs valides uniquement.** Une annonce dont l'URL est cassée (ex. gabarit
+  non rempli `%property_canton%`) n'est pas un cas de test valable : la retirer de la
+  fixture.
 - **`mypy --strict`** : pas de `Any` non justifié, pas d'ignore sans commentaire.
 - **Périmètre** : une story = un commit. Signaler si un changement déborde de la story
   plutôt que d'élargir le diff.

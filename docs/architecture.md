@@ -580,3 +580,15 @@ d'implémenter les stories concernées.
    21.10.2026 ; Comptoir et Rosset : pages) n'est donc pas bridé requête par requête.
    Cible : un `acquire(slug)` avant chaque requête, avec le `rate_limit_rpm` de la table
    `sources`.
+10. **Comptoir : adresse et description absentes de la page liste.** Les cartes de
+    `comptoir-immo.ch/location/` ne donnent que « Commune, Canton » et aucune
+    description ; leur `data-property` est vide (`{"lat":"","lng":null,"price":null}`)
+    sur toutes les cartes, en ligne comme dans la fixture — ce n'est pas un défaut
+    d'extraction. La rue et la description ne sont que sur la fiche détail : par
+    exemple `.../vesenaz/belle-arcade-amnage/` donne « Route d'Hermance 4, Vésenaz »,
+    absent de la liste (vérifié le 30.10.2026). Le scraper renvoie donc
+    `address = "Vésenaz, Genève"` et `description = None`. À trancher : récupérer la
+    fiche détail coûte une requête par annonce au crawl-delay de 10 s (≈ 5 min pour
+    les 29 fiches genevoises du spike, au-delà de l'objectif d'alerte < 3 min), sauf à
+    ne récupérer que les fiches nouvelles. Si on le fait : nouvelle fixture de fiche
+    détail et mise à jour de `docs/spike-agencies.md`.
