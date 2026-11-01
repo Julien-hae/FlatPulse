@@ -439,7 +439,7 @@ tests/
                  test_utils, test_config, test_adaptive
   contract/      test_scraper_contract.py  → ScraperContractMixin
   integration/   test_pipeline.py
-  fixtures/      HTML et JSON figés, une par régie
+  fixtures/      HTML et JSON figés : des cas nommés, extraits réels par régie
   helpers.py     FIXTURES_DIR, response_from_fixture (partagés par les tests)
 ```
 
@@ -461,20 +461,41 @@ d'exécution casse la seule séparation qui sert vraiment, « rapide » contre �
 va dans `unit/`, à côté du code qu'il couvre.
 
 **`ScraperContractMixin`** (#48) est hérité par le test de chaque scraper et vérifie
-quatre invariants sans duplication : retour `list`, champs requis non vides
-(`external_url` commence par `http`), `fingerprint` hex de 64 caractères, idempotence
-sur le même HTML. `fetch_listings` étant asynchrone, le mixin se combine avec
-`IsolatedAsyncioTestCase` ; il patche `httpx.AsyncClient.get` avec la fixture, jamais le
-réseau.
+cinq invariants sans duplication : la fixture produit au moins une annonce, retour
+`list`, champs requis non vides (`external_url` commence par `http`), `fingerprint` hex
+de 64 caractères, idempotence sur le même HTML. Sans le premier, une fixture vide fait
+passer les quatre autres à vide : ils bouclent sur les annonces. `fetch_listings` étant
+asynchrone, le mixin se combine avec `IsolatedAsyncioTestCase` ; il patche
+`httpx.AsyncClient.get` avec la fixture, jamais le réseau.
+
+**Une fixture = des cas nommés, des valeurs exactes** (#113). Une fixture n'est pas une
+copie du catalogue : c'est un extrait réel, non retouché, d'une annonce par piège
+documenté dans `docs/spike-agencies.md` (prix sur demande, canton vide, « 0.0 pièces »,
+loyer annuel…), et elle reste sous 100 Ko. Chaque cas a son test, qui retrouve l'annonce
+par `external_id` et compare ses champs à des valeurs écrites en dur :
 
 ```python
 class TestNaefScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
     scraper_class = NaefScraper
-    fixture_name = "naef_location.json"
+    fixture_name = "naef_cases.json"
+
+    async def test_naef_price_on_request_is_none(self) -> None:
+        await self.assert_listing("CP.19643", {"price_chf": None})
 ```
 
-Tout nouveau scraper **doit** arriver avec sa fixture figée dans `tests/fixtures/` et son
-test dédié, en plus des quatre contrats hérités.
+- **Des valeurs, pas des propriétés.** « `price_chf` est un `int` ou `None` » reste vert
+  quand le champ n'est jamais rempli ; `price_chf == 455000` casse au premier écart, sous
+  le nom du cas.
+- **Seulement les champs justes.** `assert_listing` ne compare que les champs donnés : un
+  cas fige ce que le scraper sort correctement aujourd'hui, et la story qui corrige un
+  champ ajoute son assertion, rouge, sur le même cas. Figer une valeur fausse graverait
+  le bug.
+- **Jamais le nombre d'annonces.** `len(result) == 374` décrit le catalogue d'un jour,
+  pas le code. La conformité au catalogue entier (taux de remplissage, formats nouveaux)
+  relève de l'audit en direct, pas des tests unitaires.
+
+Tout nouveau scraper **doit** arriver avec sa fixture de cas dans `tests/fixtures/` et son
+test par cas, en plus des contrats hérités.
 
 ---
 
@@ -558,7 +579,7 @@ d'implémenter les stories concernées.
    commandes `python -m unittest tests.unit.test_x` que les stories donnent.
 2. **Naef : HTML ou JSON ?** La story #43 parle d'une fixture `naef_listing.html` et de
    sélecteurs CSS. Le spike a établi que Naef est un endpoint JSON et la fixture livrée
-   est `tests/fixtures/naef_location.json`. La story est à corriger.
+   est `tests/fixtures/naef_cases.json`. La story est à corriger.
 3. **URL de Burger.** Story #44 : `burgerimmo.ch`. Spike : `burger-sa.ch`.
 4. **Playwright.** L'epic #49 le liste en fallback phase 2. Le spike conclut qu'aucune
    régie n'en a besoin, et que la seule bloquée (Grange) l'est par une empreinte TLS

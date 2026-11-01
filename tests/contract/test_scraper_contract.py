@@ -9,7 +9,7 @@ from tests.helpers import response_from_fixture
 
 
 class ScraperContractMixin:
-    """Four contract tests shared by every scraper.
+    """Contract tests shared by every scraper, and helpers for its named cases.
 
     Combine with `unittest.IsolatedAsyncioTestCase` and set `scraper_class` and
     `fixture_name`; the scraper then runs against the frozen fixture, never the network.
@@ -23,6 +23,27 @@ class ScraperContractMixin:
         with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get:
             mock_get.return_value = response_from_fixture(self.fixture_name)
             return await self.scraper_class().fetch_listings()
+
+    async def assert_listing(self, external_id: str, expected: dict[str, Any]) -> None:
+        """The fixture listing `external_id` has exactly the `expected` field values.
+
+        Only the given fields are compared, so a case pins the fields that are right
+        today and leaves the others to the stories that fix them.
+        """
+        assert isinstance(self, unittest.TestCase)
+        listings = await self.fetch_from_fixture()
+        listing = next(
+            (item for item in listings if item["external_id"] == external_id), None
+        )
+        if listing is None:
+            self.fail(f"Aucune annonce {external_id!r} dans {self.fixture_name}")
+        self.assertEqual({field: listing[field] for field in expected}, expected)
+
+    async def test_contract_fixture_is_not_empty(self) -> None:
+        """The fixture yields at least one listing, so the other contracts check something."""
+        result = await self.fetch_from_fixture()
+        assert isinstance(self, unittest.TestCase)
+        self.assertTrue(result, f"{self.fixture_name} ne produit aucune annonce")
 
     async def test_contract_returns_list(self) -> None:
         """fetch_listings returns a list of dicts."""

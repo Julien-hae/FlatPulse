@@ -30,24 +30,30 @@ Le test tape sur une fixture figée, jamais sur le réseau.
 - Elle existe probablement déjà : `tests/fixtures/<slug>_*.html` ou `.json` ont été
   capturées pendant le spike.
 - Sinon, capturer la réponse réelle une fois, l'anonymiser si besoin, et la committer.
-- Une fixture doit contenir **plusieurs annonces**, dont au moins un cas tordu du spike
-  (prix sur demande, surface en fourchette, ligne « + charges »…).
+- Une fixture contient **des cas nommés**, pas le catalogue entier : une annonce réelle,
+  non retouchée, par piège du spike (prix sur demande, surface en fourchette, ligne
+  « + charges »…), et moins de 100 Ko (architecture §8).
 
 ## 3. Le test, rouge
 
 ```python
 class TestNaefScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
     scraper_class = NaefScraper
-    fixture_name = "naef_location.json"
+    fixture_name = "naef_cases.json"
+
+    async def test_naef_price_on_request_is_none(self) -> None:
+        await self.assert_listing("CP.19643", {"price_chf": None})
 ```
 
-Hériter de `ScraperContractMixin` apporte gratuitement les 4 invariants communs : retour
-`list`, champs requis non vides (`external_url` commence par `http`), `fingerprint` hex
-de 64 caractères, idempotence sur le même HTML.
+Hériter de `ScraperContractMixin` apporte gratuitement les 5 invariants communs : la
+fixture produit au moins une annonce, retour `list`, champs requis non vides
+(`external_url` commence par `http`), `fingerprint` hex de 64 caractères, idempotence
+sur le même HTML.
 
-S'y ajoutent les tests propres à la régie, tirés de la story : au minimum un
-`test_parse_<slug>_fixture`, plus un test par piège du spike qu'on peut exprimer
-(format de prix particulier, pièces en `3½`, annonce sans prix…).
+S'y ajoute un test par cas de la fixture, tiré de la story : `assert_listing` retrouve
+l'annonce par `external_id` et compare ses champs à des **valeurs exactes** (format de
+prix particulier, pièces en `3½`, annonce sans prix…). Jamais de « non vide » ni de
+« float ou `None` », jamais le nombre total d'annonces.
 
 Lancer, vérifier que c'est **rouge pour la bonne raison** (pas un `ImportError`), puis
 seulement implémenter.

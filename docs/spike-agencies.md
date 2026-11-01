@@ -40,7 +40,7 @@ fiches distinctes. À recalculer au prochain passage du notebook.
 - Débit : pas de Crawl-delay · poll 90-120s (leur cache tourne à 180s)
 - Volume : 355 fiches distinctes, dont 58 dans le canton de Genève — relevé le 22.09.2026 07:29 UTC
 - Flux : +0 depuis 22.09.2026 07:25
-- Fixture : `tests/fixtures/naef_location.json` (JSON)
+- Fixture : `tests/fixtures/naef_cases.json` (JSON) — 7 props du catalogue du 30.10.2026, une par piège
 
 ### Clés du payload JSON
 
@@ -75,7 +75,7 @@ fiches distinctes. À recalculer au prochain passage du notebook.
 - Débit : pas de Crawl-delay · 4 req/min mesurés au spike ; un poll = sitemap + une requête par fiche (28 le 21.10.2026), à étaler par le `RateLimiter` (architecture §11)
 - Pas d'API ni de flux : ni RSS, ni JSON-LD ; les `api/…` du JS servent au formulaire de candidature
 - Volume : 27 fiches /fr/louer/ au sitemap, identiques aux 27 du scroll, toutes dans le canton de Genève — relevé le 21.10.2026
-- Fixtures : `tests/fixtures/burger_fiche.html` (fiche réelle du 21.10.2026, contact anonymisé) ; `burger_listing.html` (listing, spike du 22.09)
+- Fixtures : `tests/fixtures/burger_sitemap.xml` (10 entrées `/fr/louer/` et une vente, sitemap du 30.10.2026) et les 10 fiches correspondantes dans `tests/fixtures/burger/` (contact anonymisé) ; `burger_listing.html` (listing, spike du 22.09)
 
 ### Sélecteurs CSS (fiche détail)
 
@@ -111,7 +111,7 @@ fiches distinctes. À recalculer au prochain passage du notebook.
 - Canal de repli : GET /?post_type=property_for_rent&feed=rss2 — 24 items, pubDate réelles. Le sitemap property_for_rent-*.xml est périmé (lastmod 2025-11)
 - Volume : 29 fiches distinctes, dont 29 dans le canton de Genève — relevé le 22.09.2026 07:29 UTC
 - Flux : +0 depuis 22.09.2026 07:25
-- Fixture : `tests/fixtures/comptoir_listing.html` (HTML)
+- Fixture : `tests/fixtures/comptoir_cases.html` (HTML) — 7 cartes du catalogue du 30.10.2026, une par piège
 
 ### Sélecteurs CSS
 
