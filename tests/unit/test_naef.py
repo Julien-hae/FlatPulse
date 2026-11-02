@@ -1,9 +1,13 @@
 """Unit tests for the Naef Immobilier scraper."""
 
+import json
 import unittest
+
+from parsel import Selector
 
 from flatpulse.scrapers.sources.naef import NaefScraper
 from tests.contract.test_scraper_contract import ScraperContractMixin
+from tests.helpers import response_from_fixture
 
 
 class TestNaefScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
@@ -79,3 +83,12 @@ class TestNaefScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
                 "city": "Lausanne",
             },
         )
+
+    def test_naef_missing_required_field_is_a_value_error(self) -> None:
+        """No link, id or title is an invalid listing (ValueError), not a crash."""
+        payload = json.loads(response_from_fixture(self.fixture_name).text)
+        for key in ("link", "no_dossier", "intitule_plaquette"):
+            prop = {**payload["props"][0], key: None, "type_designation_fr": None}
+            node = Selector(text=json.dumps(prop))
+            with self.subTest(key=key), self.assertRaises(ValueError):
+                NaefScraper().parse_listing(node)

@@ -1,7 +1,10 @@
 """Unit tests for the Burger Immobilier scraper."""
 
+import re
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
+
+from parsel import Selector
 
 from flatpulse.common.models import Listing
 from flatpulse.scrapers.sources.burger import BurgerScraper
@@ -119,6 +122,15 @@ class TestBurgerScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
             LOUER + "veyrier-veyrierbr-depot-a-louer",
             {"title": "Dépôt à louer", "price_chf": None, "surface_m2": 160.0},
         )
+
+    def test_burger_fiche_without_title_is_a_value_error(self) -> None:
+        """A missing <h1> is an invalid listing (ValueError), not an AttributeError."""
+        url = LOUER + "geneve-studio-meuble"
+        html = response_from_fixture("burger/geneve-studio-meuble.html").text
+        page = Selector(text=re.sub(r"<h1[^>]*>.*?</h1>", "", html, flags=re.S))
+
+        with self.assertRaisesRegex(ValueError, "title"):
+            BurgerScraper().parse_listing(page, url)
 
     async def test_burger_shared_url_prefix_gives_two_listings(self) -> None:
         """Two fiches whose URLs share a prefix stay two listings."""

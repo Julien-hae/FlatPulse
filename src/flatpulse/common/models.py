@@ -84,12 +84,12 @@ class Listing:
             )
 
     def _required_fields(self) -> None:
-        """Validate required fields."""
-        if not self.external_id.strip():
+        """Validate required fields; None counts as empty, a selector returns it."""
+        if not (self.external_id or "").strip():
             raise self._invalid("external_id", "cannot be empty")
-        if not self.title.strip():
+        if not (self.title or "").strip():
             raise self._invalid("title", "cannot be empty")
-        if not self.external_url.startswith(("http://", "https://")):
+        if not (self.external_url or "").startswith(("http://", "https://")):
             raise self._invalid("external_url", "must be an http(s) URL")
 
     def _validate_positive_fields(self) -> None:
