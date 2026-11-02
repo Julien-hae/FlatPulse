@@ -58,6 +58,7 @@ class ComptoirScraper(HttpScraper):
             price_chf=parse_swiss_price(node.css("div.heading-4::text").get()),
             nb_rooms=parse_rooms(rooms),
             external_id=self._get_id(node),
+            address=self._get_location(node),
             description=self._get_description(node),
         )
 
@@ -86,9 +87,14 @@ class ComptoirScraper(HttpScraper):
             raise ValueError(f"Property type is not defined: {self._card_url(node)}")
         return property_type
 
+    @staticmethod
+    def _get_location(node: Selector) -> str | None:
+        """Return the location line of the card ('Ville, Canton'), None without one."""
+        return node.css("div.opacity-80").xpath("normalize-space()").get() or None
+
     def _get_adress(self, node: Selector) -> str:
-        """Return the location line of the card ('Ville, Canton')."""
-        address = node.css("div.opacity-80").xpath("normalize-space()").get()
+        """Return the location line of the card, which the title fallback needs."""
+        address = self._get_location(node)
         if not address:
             raise ValueError(f"Address not found: {self._card_url(node)}")
         return address
