@@ -19,10 +19,13 @@ def parse_swiss_price(text: str | None) -> int | None:
     return francs * 100 + cents
 
 
-_PER_YEAR = re.compile(
-    r"/\s*(an|année)\b|par an|annuel|p\.\s?a\.|pro jahr|/\s*jahr|jährlich", re.I
-)
-_PER_M2 = re.compile(r"/\s*m[²2]\b|par m[²2]|pro m[²2]", re.I)
+# A period or unit counts only when written as one, right after a slash or « par » /
+# « pro » (« / an », « par année », « / m² / an », « pro Jahr ») or as « p.a. »: a word
+# elsewhere in the line (« indexation annuelle ») must not divide a monthly rent by 12.
+_UNIT = r"(?:/|\bpar\b|\bpro\b)\s*"
+_PER_MONTH = re.compile(_UNIT + r"(?:mois|monat)\b", re.I)
+_PER_YEAR = re.compile(_UNIT + r"(?:an|année|jahr)\b|\bp\.\s?a\.", re.I)
+_PER_M2 = re.compile(_UNIT + r"m[²2]\b", re.I)
 
 
 def parse_monthly_rent(text: str | None, surface_m2: float | None = None) -> int | None:
@@ -38,7 +41,7 @@ def parse_monthly_rent(text: str | None, surface_m2: float | None = None) -> int
         if surface_m2 is None:
             return None
         amount = amount * surface_m2  # type: ignore[assignment]
-    if _PER_YEAR.search(text):
+    if _PER_YEAR.search(text) and not _PER_MONTH.search(text):
         amount = amount / 12  # type: ignore[assignment]
     return round(amount)
 
