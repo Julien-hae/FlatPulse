@@ -39,6 +39,7 @@ class AlternatingInvalidScraper(MinimalScraper):
     """Scraper test double whose middle listing breaks a Listing invariant."""
 
     def parse_listing(self, node: Selector) -> Listing:
+        """Listing 102 gets a rent of 0, which Listing rejects."""
         listing = super().parse_listing(node)
         if listing.external_id == "102":
             return replace(listing, price_chf=0)  # raises ValueError
@@ -60,10 +61,10 @@ class TestHttpScraper(unittest.IsolatedAsyncioTestCase):
     scraper = MinimalScraper()
 
     @patch("httpx.AsyncClient.get", new_callable=AsyncMock)
-    async def test_fetch_returns_list_of_dicts_with_required_keys(
+    async def test_fetch_returns_listings_with_required_fields(
         self, mock_get: AsyncMock
     ) -> None:
-        """Test that fetch_listings returns a list of dicts with the required keys."""
+        """Test that fetch_listings returns Listing objects with their required fields."""
         mock_get.return_value = response_from_fixture("sample_listing.html")
 
         result = await self.scraper.fetch_listings()
@@ -109,6 +110,7 @@ class TestHttpScraper(unittest.IsolatedAsyncioTestCase):
     async def test_invalid_listing_is_skipped_and_logged(
         self, mock_get: AsyncMock
     ) -> None:
+        """The pipeline never falls because of one link (CLAUDE.md): skip and log."""
         mock_get.return_value = response_from_fixture("sample_listing.html")
         scraper = AlternatingInvalidScraper()
 
@@ -132,10 +134,12 @@ class TestScraperContract(unittest.TestCase):
             HttpScraper()  # type: ignore[abstract]
 
     def test_listing_rejects_empty_required_field(self) -> None:
+        """A listing without identity breaks the dedup."""
         with self.assertRaises(ValueError):
             Listing(external_id="", external_url="http://example.com", title="Test")
 
     def test_listing_rejects_zero_price(self) -> None:
+        """A 0 passes the price hard filters and triggers absurd alerts (CLAUDE.md)."""
         with self.assertRaises(ValueError):
             Listing(
                 external_id="1",
@@ -209,6 +213,7 @@ class TestScraperContract(unittest.TestCase):
             self.assertIn(url, str(error.exception))
 
     def test_listing_rejects_zero_rooms(self) -> None:
+        """« 0 pièce » means unknown at Naef and Burger: it must arrive as None."""
         with self.assertRaises(ValueError):
             Listing(
                 external_id="1",
@@ -242,6 +247,7 @@ class TestScraperContract(unittest.TestCase):
                 build()
 
     def test_listing_rejects_empty_optional_text(self) -> None:
+        """An absent text is None, not an empty string."""
         with self.assertRaises(ValueError):
             Listing(
                 external_id="1",
@@ -251,6 +257,7 @@ class TestScraperContract(unittest.TestCase):
             )
 
     def test_listing_rejects_canton_name(self) -> None:
+        """canton is the two-letter code: "GE" passes, a canton name does not."""
         with self.assertRaises(ValueError):
             Listing(
                 external_id="1",
@@ -258,3 +265,10 @@ class TestScraperContract(unittest.TestCase):
                 title="Test",
                 canton="Geneva",
             )
+        listing = Listing(
+            external_id="1",
+            external_url="http://example.com",
+            title="Test",
+            canton="GE",
+        )
+        self.assertEqual(listing.canton, "GE")

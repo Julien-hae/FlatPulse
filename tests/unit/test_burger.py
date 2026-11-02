@@ -138,6 +138,7 @@ class TestBurgerScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
         studio = LOUER + "geneve-studio-meuble"
 
         def get(url: str) -> MagicMock:
+            """Serve the studio fiche without its <h1>, the others unchanged."""
             if url == studio:
                 html = response_from_fixture("burger/geneve-studio-meuble.html").text
                 return MagicMock(
