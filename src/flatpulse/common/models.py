@@ -6,8 +6,6 @@ from dataclasses import dataclass, fields
 from enum import StrEnum
 from typing import get_type_hints
 
-from httpx import URL
-
 
 @dataclass
 class SourceConfig:
@@ -56,7 +54,7 @@ class Listing:
     """Represents a real estate listing."""
 
     external_id: str
-    external_url: URL
+    external_url: str
     title: str
     property_type: PropertyType | None = None
     price_chf: int | None = None  # centimes, loyer MENSUEL charges comprises
@@ -73,8 +71,6 @@ class Listing:
 
     def __post_init__(self) -> None:
         """Check fields."""
-        if not isinstance(self.external_url, URL):
-            object.__setattr__(self, "external_url", URL(self.external_url))
         self._set_empty_str_fields_to_none()
         self._required_fields()
         self._validate_positive_fields()
@@ -91,9 +87,9 @@ class Listing:
             raise ValueError("external_id cannot be empty")
         if not self.title.strip():
             raise ValueError("title cannot be empty")
-        if not self.external_url.is_absolute_url:
+        if not self.external_url.startswith(("http://", "https://")):
             raise ValueError(
-                f"external_url cannot be empty or relative : {self.external_url}"
+                f"external_url must be an http(s) URL : {self.external_url}"
             )
 
     def _validate_positive_fields(self) -> None:
@@ -120,6 +116,6 @@ class Listing:
 
     @property
     def fingerprint(self) -> str:
-        """Compute a unique fingerprint for a listing based on its URL, title, and ID."""
-        fingerprint_source = f"{self.external_url!s}|{self.title}|{self.price_chf}"
+        """SHA-256 of URL, title and price: a price change gives a new fingerprint."""
+        fingerprint_source = f"{self.external_url}|{self.title}|{self.price_chf}"
         return hashlib.sha256(fingerprint_source.encode()).hexdigest()

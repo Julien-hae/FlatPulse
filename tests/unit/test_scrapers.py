@@ -1,5 +1,6 @@
 """Unit tests for the scrapers base class."""
 
+import hashlib
 import unittest
 from unittest.mock import AsyncMock, patch
 
@@ -151,6 +152,34 @@ class TestScraperContract(unittest.TestCase):
         )
 
         self.assertEqual((listing.price_chf, listing.charges_chf), (185000, 20000))
+
+    def test_fingerprint_is_unchanged(self) -> None:
+        """Same formula as before #114, or the whole stock would look modified."""
+        listing = Listing(
+            external_id="1",
+            external_url="https://www.burger-sa.ch/fr/louer/a",
+            title="Studio",
+            price_chf=137000,
+        )
+        source = "https://www.burger-sa.ch/fr/louer/a|Studio|137000"
+
+        self.assertEqual(
+            listing.fingerprint, hashlib.sha256(source.encode()).hexdigest()
+        )
+
+    def test_external_url_is_kept_as_scraped(self) -> None:
+        """No normalisation: the fingerprint hashes the URL the agency published."""
+        url = "https://www.Naef.ch:443/location/Genève/x/"
+
+        listing = Listing(external_id="1", external_url=url, title="Studio")
+
+        self.assertEqual(str(listing.external_url), url)
+
+    def test_listing_rejects_non_http_url(self) -> None:
+        """A relative, ftp: or mailto: link cannot be sent as the listing's link."""
+        for url in ("/fr/louer/a", "ftp://www.naef.ch/a", "mailto:info@naef.ch"):
+            with self.subTest(url=url), self.assertRaises(ValueError):
+                Listing(external_id="1", external_url=url, title="Studio")
 
     def test_listing_rejects_zero_rooms(self) -> None:
         with self.assertRaises(ValueError):
