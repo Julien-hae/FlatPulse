@@ -215,6 +215,30 @@ class TestScraperContract(unittest.TestCase):
                 nb_rooms=0,
             )
 
+    def test_listing_rejects_zero_or_negative_quantities(self) -> None:
+        """Absent is None, never 0: charges, rooms and surface included."""
+        url = "https://www.naef.ch/x/"
+        cases: dict[str, Callable[[], Listing]] = {
+            "price_chf=-100": lambda: Listing(
+                external_id="1", external_url=url, title="Studio", price_chf=-100
+            ),
+            "charges_chf=0": lambda: Listing(
+                external_id="1", external_url=url, title="Studio", charges_chf=0
+            ),
+            "nb_rooms=-1.0": lambda: Listing(
+                external_id="1", external_url=url, title="Studio", nb_rooms=-1.0
+            ),
+            "surface_m2=0.0": lambda: Listing(
+                external_id="1", external_url=url, title="Studio", surface_m2=0.0
+            ),
+            "surface_m2=-5.0": lambda: Listing(
+                external_id="1", external_url=url, title="Studio", surface_m2=-5.0
+            ),
+        }
+        for case, build in cases.items():
+            with self.subTest(case=case), self.assertRaises(ValueError):
+                build()
+
     def test_listing_rejects_empty_optional_text(self) -> None:
         listing = Listing(
             external_id="1",

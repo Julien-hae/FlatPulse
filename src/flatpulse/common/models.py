@@ -93,13 +93,16 @@ class Listing:
             raise self._invalid("external_url", "must be an http(s) URL")
 
     def _validate_positive_fields(self) -> None:
-        """Validate positive fields."""
-        if self.charges_chf is not None and self.charges_chf < 0:
-            raise self._invalid("charges_chf", f"must be positive: {self.charges_chf}")
-        if self.nb_rooms is not None and self.nb_rooms <= 0:
-            raise self._invalid("nb_rooms", f"must be positive: {self.nb_rooms}")
-        if self.price_chf is not None and self.price_chf <= 0:
-            raise self._invalid("price_chf", f"must be positive: {self.price_chf}")
+        """Amounts, rooms and surface are > 0: an absent value is None, never 0."""
+        quantities = {
+            "price_chf": self.price_chf,
+            "charges_chf": self.charges_chf,
+            "nb_rooms": self.nb_rooms,
+            "surface_m2": self.surface_m2,
+        }
+        for field, value in quantities.items():
+            if value is not None and value <= 0:
+                raise self._invalid(field, f"must be positive: {value}")
 
     def _invalid(self, field: str, problem: str) -> ValueError:
         """A ValueError naming the faulty field and the listing it belongs to."""
