@@ -58,7 +58,7 @@ class ComptoirScraper(HttpScraper):
         return Listing(
             title=self._get_title(node),
             external_url=node.css("a:has(h2)::attr(href)").get(""),
-            price_chf=parse_monthly_rent(node.css("div.heading-4::text").get()),
+            price_chf=parse_monthly_rent(node.css("div.heading-4::text").get(), None),
             nb_rooms=parse_rooms(rooms),
             external_id=self._get_id(node),
             address=self._get_location(node),

@@ -37,10 +37,10 @@ def parse_monthly_rent(text: str | None, surface_m2: float | None = None) -> int
     if _PER_M2.search(text):
         if surface_m2 is None:
             return None
-        amount = round(amount * surface_m2)
+        amount = amount * surface_m2  # type: ignore[assignment]
     if _PER_YEAR.search(text):
-        amount = round(amount / 12)
-    return amount
+        amount = amount / 12  # type: ignore[assignment]
+    return round(amount)
 
 
 def parse_rooms(text: str | None) -> float | None:

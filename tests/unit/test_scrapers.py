@@ -31,7 +31,7 @@ class MinimalScraper(HttpScraper):
             external_id=node.attrib.get("data-id", ""),
             external_url=node.css("a.title::attr(href)").get(""),
             title=node.css("a.title::text").get(""),
-            price_chf=parse_monthly_rent(node.css("span.price::text").get()),
+            price_chf=parse_monthly_rent(node.css("span.price::text").get(), None),
         )
 
 
