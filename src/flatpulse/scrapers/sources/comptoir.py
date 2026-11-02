@@ -1,5 +1,7 @@
 """Scraper for Comptoir Immobilier, whose rental catalogue is paginated static HTML."""
 
+from functools import partial
+
 import httpx
 from parsel import Selector
 
@@ -29,7 +31,7 @@ class ComptoirScraper(HttpScraper):
         return max(numbers, default=1)
 
     async def fetch_listings(self) -> list[Listing]:
-        """Fetch every catalogue page and parse its property cards."""
+        """Fetch every catalogue page and parse its cards, skipping invalid ones."""
         listings: list[Listing] = []
         async with httpx.AsyncClient() as client:
             page_number, last_page = 1, 1
@@ -39,9 +41,10 @@ class ComptoirScraper(HttpScraper):
                 page = Selector(text=response.text)
                 if page_number == 1:
                     last_page = self.nb_pages(page)
-                listings.extend(
-                    self.parse_listing(node) for node in self.listing_nodes(page)
-                )
+                for node in self.listing_nodes(page):
+                    listing = self._parse_or_skip(partial(self.parse_listing, node))
+                    if listing is not None:
+                        listings.append(listing)
                 page_number += 1
         return listings
 

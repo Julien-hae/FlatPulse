@@ -1,6 +1,7 @@
 """Unit tests for the Comptoir Immobilier scraper."""
 
 import unittest
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from parsel import Selector
 
@@ -68,6 +69,19 @@ class TestComptoirScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase
         listing = self.scraper_class().parse_listing(card.css("article")[0])
 
         self.assertIsNone(listing.address)
+
+    @patch("httpx.AsyncClient.get", new_callable=AsyncMock)
+    async def test_comptoir_invalid_card_is_skipped(self, mock_get: AsyncMock) -> None:
+        """A card that cannot be parsed is logged and skipped; the others come out."""
+        html = response_from_fixture(self.fixture_name).text
+        broken = html.replace("<h2", "<h3", 1).replace("</h2>", "</h3>", 1)
+        mock_get.return_value = MagicMock(text=broken)
+        expected = len(await self.fetch_from_fixture()) - 1
+
+        with self.assertLogs("flatpulse.scrapers.base", "WARNING"):
+            listings = await self.scraper_class().fetch_listings()
+
+        self.assertEqual(len(listings), expected)
 
     async def test_comptoir_parking(self) -> None:
         """A parking card has a rent and no rooms."""
