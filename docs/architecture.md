@@ -214,7 +214,7 @@ Arborescence cible (`src/flatpulse/`) :
 ```
 config.py              Config, validation fail-fast au démarrage
 models.py              Listing, PropertyType, SourceConfig, MatchResult, ScrapingStats
-utils.py               parse_swiss_price, parse_rooms
+utils.py               parse_swiss_price, parse_rooms, parse_monthly_rent
 db.py                  pool psycopg + helpers CRUD
 main.py                orchestration du pipeline
 common/
@@ -390,6 +390,11 @@ données fausses silencieusement.
 - **Formats de prix multiples** : `CHF 3'500.— / mois`, `CHF 2'320.- + charges`,
   `Dès CHF 2'320.- + charges`. Tiret cadratin comme tiret simple. Écarter les lignes
   contenant « charges » casse le format « Dès … + charges ».
+- **Loyers non mensuels** (commerces surtout) : `CHF 24'000.— / année`,
+  `CHF 600.- / m² / an`. `price_chf` est toujours mensuel : `parse_monthly_rent()` divise
+  par 12 et multiplie par la surface, et rend `None` pour un prix au m² sans surface.
+  Seule une unité écrite comme telle compte (`/ an`, `par année`, `p.a.`, `pro Jahr`) :
+  « indexation annuelle » ailleurs dans la ligne ne doit pas diviser un loyer mensuel.
 - **Surface** absente, en fourchette (`de 85 M2 à 100 M2`) ou préfixée (`ENV. 60 M2`).
 - **Le slug ment** : une URL `…35-pieces` pour une annonce affichée « 3.0 pièces ». Le
   texte fait foi, pas l'URL.

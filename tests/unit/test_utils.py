@@ -2,9 +2,10 @@
 
 import os
 import unittest
+from typing import Any
 from unittest.mock import patch
 
-from flatpulse.common.utils import parse_rooms, parse_swiss_price
+from flatpulse.common.utils import parse_monthly_rent, parse_rooms, parse_swiss_price
 from flatpulse.config import REQUIRED_VARS, Config
 
 
@@ -22,6 +23,16 @@ class TestUtils(unittest.TestCase):
             "Preis auf Anfrage": None,
             None: None,
         }
+        self.monthly_prices_test_set: list[dict[str, Any]] = [
+            {"input": "CHF 18'720.- / an", "expected": 156000, "surface_m2": None},
+            {"input": "CHF 24'000.— / année", "expected": 200000, "surface_m2": None},
+            {"input": "CHF 600.- / m² / an", "expected": 585000, "surface_m2": 117},
+            {"input": "CHF 260.— / m2 / année", "expected": None, "surface_m2": None},
+            {"input": "Loyer sur demande", "expected": None, "surface_m2": None},
+            {"input": "1500/ mois", "expected": 150000, "surface_m2": None},
+            {"input": "Dès 1500 + charges", "expected": 150000, "surface_m2": None},
+            {"input": "CHF 260.— / m2 / année", "expected": 463667, "surface_m2": 214},
+        ]
         self.rooms_test_set = {
             "2 chambres": 2,
             "1.5 pièces": 1.5,
@@ -36,6 +47,14 @@ class TestUtils(unittest.TestCase):
     def test_parse_price(self) -> None:
         for test, expected in self.prices_test_set.items():
             self.assertEqual(parse_swiss_price(test), expected, test)
+
+    def test_parse_monthly_price(self) -> None:
+        for test_case in self.monthly_prices_test_set:
+            self.assertEqual(
+                parse_monthly_rent(test_case["input"], test_case["surface_m2"]),
+                test_case["expected"],
+                test_case["input"],
+            )
 
     def test_parse_rooms(self) -> None:
         for test, expected in self.rooms_test_set.items():

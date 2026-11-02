@@ -6,7 +6,7 @@ import httpx
 from parsel import Selector
 
 from flatpulse.common.models import Listing
-from flatpulse.common.utils import parse_rooms, parse_swiss_price
+from flatpulse.common.utils import parse_monthly_rent, parse_rooms
 from flatpulse.scrapers.base import HttpScraper
 
 
@@ -58,7 +58,7 @@ class ComptoirScraper(HttpScraper):
         return Listing(
             title=self._get_title(node),
             external_url=node.css("a:has(h2)::attr(href)").get(""),
-            price_chf=parse_swiss_price(node.css("div.heading-4::text").get()),
+            price_chf=parse_monthly_rent(node.css("div.heading-4::text").get(), None),
             nb_rooms=parse_rooms(rooms),
             external_id=self._get_id(node),
             address=self._get_location(node),

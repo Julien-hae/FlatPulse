@@ -89,6 +89,7 @@ class TestBurgerScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
                 "surface_m2": 17.0,
                 "address": "Boulevard Helvétique 26",
                 "city": "Genève",
+                "price_chf": 200000,
             },
         )
 
@@ -100,6 +101,7 @@ class TestBurgerScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
                 "surface_m2": 214.0,
                 "address": "Rue des Sablières 1-1bis-3",
                 "city": "Satigny",
+                "price_chf": 463667,
             },
         )
 

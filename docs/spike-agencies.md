@@ -93,6 +93,7 @@ fiches distinctes. À recalculer au prochain passage du notebook.
 ### Pièges
 
 - Trois formats de prix : CHF 3'500.— / mois, CHF 2'320.- + charges, Dès CHF 2'320.- + charges. Tiret cadratin autant que tiret simple.
+- Loyers non mensuels sur les commerces (3 fiches sur 42 le 30.10.2026) : CHF 24'000.— / année (arcade), CHF 260.— / m2 / année (bureaux de 214 m²). `parse_monthly_rent` les ramène au mois : ÷ 12, et × surface pour un prix au m² ; sans surface, un prix au m² donne None, jamais un faux loyer.
 - Surface absente, en fourchette (de 85 M2 à 100 M2) ou préfixée (ENV. 60 M2).
 - Le slug peut mentir (35-pieces affiché 3.0 pièces) : faire foi au texte.
 - external_id = URL complète : deux fiches partagent le préfixe …mont-bla.
@@ -128,6 +129,7 @@ fiches distinctes. À recalculer au prochain passage du notebook.
 - Le titre contredit parfois la métadonnée : la ligne de métadonnées fait foi.
 - Surface tantôt collée à la métadonnée, tantôt sur sa propre ligne.
 - Prix sur demande → price_chf = None.
+- Loyers non mensuels (30.10.2026) : CHF 18'720.- / an (3 cartes sur 374) et CHF 600.- / m² / an (104 cartes, surtout des bureaux). `parse_monthly_rent` divise par 12 ; un prix au m² a besoin de la surface de la carte, extraite par #118 — d'ici là il donne None.
 - Canton écrit canton-de-geneve dans les fiches, Genève dans les filtres.
 - Les liens SEO contextuels vivent dans la même grille que les cartes.
 

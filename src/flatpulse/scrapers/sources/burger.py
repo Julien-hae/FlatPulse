@@ -8,7 +8,7 @@ import httpx
 from parsel import Selector
 
 from flatpulse.common.models import Listing
-from flatpulse.common.utils import parse_rooms, parse_surface, parse_swiss_price
+from flatpulse.common.utils import parse_monthly_rent, parse_rooms, parse_surface
 from flatpulse.scrapers.base import HttpScraper
 
 
@@ -51,13 +51,15 @@ class BurgerScraper(HttpScraper):
         address = [line.strip() for line in details.css("div.text-base::text").getall()]
         features = " ".join(details.css("div.text-sm::text").getall())
         rent = node.xpath("//div[text()='Loyer']/following-sibling::div/text()").get()
+        surface = parse_surface(features)
+        price_chf = parse_monthly_rent(rent, surface)
         return Listing(
             external_url=url,
             external_id=url,
             title=node.css("h1::text").get(""),
-            price_chf=parse_swiss_price(rent),
+            price_chf=price_chf,
             nb_rooms=parse_rooms(features) or None,
-            surface_m2=parse_surface(features),
+            surface_m2=surface,
             address=address[0] if address else None,
             city=self.city(address),
             description=node.css("div.prose").xpath("normalize-space()").get() or None,
