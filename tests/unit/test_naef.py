@@ -2,6 +2,7 @@
 
 import json
 import unittest
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from parsel import Selector
 
@@ -92,3 +93,17 @@ class TestNaefScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
             node = Selector(text=json.dumps(prop))
             with self.subTest(key=key), self.assertRaises(ValueError):
                 NaefScraper().parse_listing(node)
+
+    @patch("httpx.AsyncClient.get", new_callable=AsyncMock)
+    async def test_naef_invalid_prop_is_skipped(self, mock_get: AsyncMock) -> None:
+        """A prop Listing rejects is logged and skipped; the other props come out."""
+        payload = json.loads(response_from_fixture(self.fixture_name).text)
+        payload["props"][0]["link"] = "/location/relative/"
+        mock_get.return_value = MagicMock(text=json.dumps(payload))
+
+        with self.assertLogs("flatpulse.scrapers.base", "WARNING") as captured:
+            listings = await NaefScraper().fetch_listings()
+
+        self.assertEqual(len(listings), len(payload["props"]) - 1)
+        [warning] = captured.output
+        self.assertIn("external_url", warning)

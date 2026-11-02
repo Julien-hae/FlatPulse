@@ -3,6 +3,8 @@
 import asyncio
 import logging
 from abc import ABC, abstractmethod
+from collections.abc import Callable
+from functools import partial
 
 import httpx
 from parsel import Selector
@@ -57,13 +59,20 @@ class HttpScraper(AbstractScraper):
         page = Selector(text=html)
         listings: list[Listing] = []
         for node in self.listing_nodes(page):
-            try:
-                listings.append(self.parse_listing(node))
-            except ValueError as exc:
-                listing_name = (
-                    node.css("a::text").get()
-                    or node.attrib.get("data-id")
-                    or "unknown listing"
-                )
-                logger.warning("Skipped invalid listing %r: %s", listing_name, exc)
+            listing = self._parse_or_skip(partial(self.parse_listing, node))
+            if listing is not None:
+                listings.append(listing)
         return listings
+
+    @staticmethod
+    def _parse_or_skip(parse: Callable[[], Listing]) -> Listing | None:
+        """Run `parse`; an invalid listing is logged and skipped, the poll goes on.
+
+        The ValueError names the faulty field and the listing's URL, so the node
+        itself (HTML or JSON) is not read again here.
+        """
+        try:
+            return parse()
+        except ValueError as error:
+            logger.warning("Skipped invalid listing: %s", error)
+            return None

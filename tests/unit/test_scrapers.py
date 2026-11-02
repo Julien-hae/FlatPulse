@@ -3,6 +3,7 @@
 import hashlib
 import unittest
 from collections.abc import Callable
+from dataclasses import replace
 from unittest.mock import AsyncMock, patch
 
 from parsel import Selector
@@ -35,12 +36,13 @@ class MinimalScraper(HttpScraper):
 
 
 class AlternatingInvalidScraper(MinimalScraper):
-    """Scraper test double that rejects the middle listing."""
+    """Scraper test double whose middle listing breaks a Listing invariant."""
 
     def parse_listing(self, node: Selector) -> Listing:
-        if node.attrib.get("data-id") == "102":
-            raise ValueError("invalid listing")
-        return super().parse_listing(node)
+        listing = super().parse_listing(node)
+        if listing.external_id == "102":
+            return replace(listing, price_chf=0)  # raises ValueError
+        return listing
 
 
 class TestMinimalScraperContract(
@@ -114,9 +116,9 @@ class TestHttpScraper(unittest.IsolatedAsyncioTestCase):
             result = await scraper.fetch_listings()
 
         self.assertEqual([listing.external_id for listing in result], ["101", "103"])
-        self.assertTrue(
-            any("4 pièces Eaux-Vives" in message for message in captured.output)
-        )
+        [warning] = captured.output
+        self.assertIn("price_chf", warning)
+        self.assertIn("https://example.com/annonces/102", warning)
 
 
 class TestScraperContract(unittest.TestCase):
