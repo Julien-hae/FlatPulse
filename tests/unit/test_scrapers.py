@@ -2,6 +2,7 @@
 
 import hashlib
 import unittest
+from collections.abc import Callable
 from unittest.mock import AsyncMock, patch
 
 from parsel import Selector
@@ -180,6 +181,30 @@ class TestScraperContract(unittest.TestCase):
         for url in ("/fr/louer/a", "ftp://www.naef.ch/a", "mailto:info@naef.ch"):
             with self.subTest(url=url), self.assertRaises(ValueError):
                 Listing(external_id="1", external_url=url, title="Studio")
+
+    def test_listing_errors_name_the_field_and_the_url(self) -> None:
+        """The skip warning must say which field of which listing is wrong."""
+        url = "https://www.naef.ch/location/appartement/1205/x/"
+        cases: dict[str, Callable[[], Listing]] = {
+            "external_id": lambda: Listing(
+                external_id="", external_url=url, title="Studio"
+            ),
+            "title": lambda: Listing(external_id="1", external_url=url, title=""),
+            "price_chf": lambda: Listing(
+                external_id="1", external_url=url, title="Studio", price_chf=0
+            ),
+            "nb_rooms": lambda: Listing(
+                external_id="1", external_url=url, title="Studio", nb_rooms=0.0
+            ),
+            "canton": lambda: Listing(
+                external_id="1", external_url=url, title="Studio", canton="Genève"
+            ),
+        }
+        for field, build in cases.items():
+            with self.subTest(field=field), self.assertRaises(ValueError) as error:
+                build()
+            self.assertIn(field, str(error.exception))
+            self.assertIn(url, str(error.exception))
 
     def test_listing_rejects_zero_rooms(self) -> None:
         with self.assertRaises(ValueError):

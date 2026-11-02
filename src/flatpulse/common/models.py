@@ -79,31 +79,31 @@ class Listing:
     def _validate_canton(self) -> None:
         """Validate canton."""
         if self.canton is not None and re.fullmatch(r"[A-Z]{2}", self.canton) is None:
-            raise ValueError("canton must contain exactly two uppercase letters")
+            raise self._invalid(
+                "canton", f"must be two capital letters: {self.canton!r}"
+            )
 
     def _required_fields(self) -> None:
         """Validate required fields."""
         if not self.external_id.strip():
-            raise ValueError("external_id cannot be empty")
+            raise self._invalid("external_id", "cannot be empty")
         if not self.title.strip():
-            raise ValueError("title cannot be empty")
+            raise self._invalid("title", "cannot be empty")
         if not self.external_url.startswith(("http://", "https://")):
-            raise ValueError(
-                f"external_url must be an http(s) URL : {self.external_url}"
-            )
+            raise self._invalid("external_url", "must be an http(s) URL")
 
     def _validate_positive_fields(self) -> None:
         """Validate positive fields."""
         if self.charges_chf is not None and self.charges_chf < 0:
-            raise ValueError(f"charges_chf must be positive : got {self.charges_chf}")
+            raise self._invalid("charges_chf", f"must be positive: {self.charges_chf}")
         if self.nb_rooms is not None and self.nb_rooms <= 0:
-            raise ValueError(
-                f"nb_rooms must be strictly positive : got {self.nb_rooms}"
-            )
+            raise self._invalid("nb_rooms", f"must be positive: {self.nb_rooms}")
         if self.price_chf is not None and self.price_chf <= 0:
-            raise ValueError(
-                f"price_chf must be strictly positive : got {self.price_chf}"
-            )
+            raise self._invalid("price_chf", f"must be positive: {self.price_chf}")
+
+    def _invalid(self, field: str, problem: str) -> ValueError:
+        """A ValueError naming the faulty field and the listing it belongs to."""
+        return ValueError(f"{field} {problem} ({self.external_url})")
 
     def _set_empty_str_fields_to_none(self) -> None:
         """Set blank optional string fields to None."""
