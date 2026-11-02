@@ -120,7 +120,9 @@ CREATE TABLE listings (
 
     title           TEXT NOT NULL,
     description     TEXT,
-    price_chf       INT,               -- EN CENTIMES (cf. §4.1)
+    property_type   VARCHAR(20),       -- apartment, house, parking, commercial, storage
+    price_chf       INT,               -- EN CENTIMES (cf. §4.1), loyer mensuel charges comprises
+    charges_chf     INT,               -- EN CENTIMES, part des charges dans price_chf
     nb_rooms        DECIMAL(3,1),
     surface_m2      INT,
     floor           INT,
@@ -186,8 +188,8 @@ CREATE TABLE notifications (
 
 ### 4.1 Les montants sont en centimes
 
-`price_chf`, `min_price` et `max_price` stockent des **centimes**, malgré le nom de la
-colonne. `CHF 1'850.–/mois` → `185000`. Un budget de 2 500 CHF → `max_price = 250000`.
+`price_chf`, `charges_chf`, `min_price` et `max_price` stockent des **centimes**, malgré
+le nom de la colonne. `CHF 1'850.–/mois` → `185000`. Un budget de 2 500 CHF → `max_price = 250000`.
 C'est le contrat posé par `parse_swiss_price()` (#79) et vérifié par les tests de #43 et
 #54. Toute valeur affichée à l'utilisateur doit donc être divisée par 100.
 
@@ -211,7 +213,7 @@ Arborescence cible (`src/flatpulse/`) :
 
 ```
 config.py              Config, validation fail-fast au démarrage
-models.py              SourceConfig, MatchResult, ScrapingStats (dataclasses)
+models.py              Listing, PropertyType, SourceConfig, MatchResult, ScrapingStats
 utils.py               parse_swiss_price, parse_rooms
 db.py                  pool psycopg + helpers CRUD
 main.py                orchestration du pipeline
@@ -237,7 +239,7 @@ distribution/
 
 ### 5.1 Scraping (#41, #42, #46, #47, #48)
 
-**`AbstractScraper`** (ABC) expose `fetch_listings() -> list[dict]` (abstraite) et
+**`AbstractScraper`** (ABC) expose `fetch_listings() -> list[Listing]` (abstraite) et
 `run()` (concrète : rate limit → fetch → retour). On n'override pas `run()`.
 
 **`HttpScraper`** implémente le fetch HTTP + parsing `parsel.Selector`. C'est la seule
@@ -245,12 +247,25 @@ implémentation nécessaire : le spike a confirmé qu'aucune des 13 régies anal
 requiert un navigateur headless. Les sources « JS-rendered » (Naef, Bory, Rosset,
 Bernard Nicod) exposent toutes un endpoint JSON ou un état hydraté qu'on lit directement.
 
-Chaque dict produit porte au minimum `external_id`, `external_url`, `title`, plus
-`price_chf`, `nb_rooms`, `surface_m2`, `floor`, `address`, `city`, `description`,
-`images` en optionnel — **`None` si absent, jamais d'exception, jamais `0`**.
+**`Listing`** (#114, `common/models.py`) est le modèle unique produit par tous les
+scrapers : une `dataclass(frozen=True, slots=True, kw_only=True)` de la stdlib, pas
+pydantic, qui convertirait `"85"` en `85` et masquerait les bugs de parsing. Requis :
+`external_id`, `external_url` (chaîne telle que publiée, `http(s)://`), `title`.
+Optionnels : `property_type` (`PropertyType`), `price_chf` (loyer **mensuel charges
+comprises**), `charges_chf` (sa part de charges), `nb_rooms`, `surface_m2`, `floor`
+(0 = rez, négatif = sous-sol), `address`, `postal_code`, `city`, `canton` (code à deux
+lettres), `description`, `images` (`tuple`). **Absent → `None`, jamais `0`, jamais `""`.**
 
-**Fingerprint** : `SHA-256(external_url + title + str(price_chf))`, 64 caractères hex,
-déterministe. Un changement de prix change le fingerprint → détection de baisse de prix.
+`__post_init__` lève `ValueError`, avec le champ fautif et l'`external_url` dans le
+message, si un champ requis est vide, si `external_url` n'est pas en `http(s)://`, si
+un montant, `nb_rooms` ou `surface_m2` vaut `0` ou moins, si un texte optionnel est vide,
+ou si `canton` n'est pas deux majuscules. Une annonce invalide est un bug de scraper, pas
+une raison de perdre la source : `HttpScraper._parse_or_skip()` la logue en WARNING et
+le poll continue. Les `fetch_listings` surchargés (Burger, Comptoir) passent aussi par
+lui.
+
+**Fingerprint** (`Listing.fingerprint`) : `SHA-256(external_url + title +
+str(price_chf))`, 64 caractères hex, déterministe, inchangé par #114. Un changement de prix change le fingerprint → détection de baisse de prix.
 
 **`RateLimiter`** : un token bucket par `slug`, capacité = `rate_limit_rpm`, refill de
 `RPM/60` token par seconde, basé sur `time.monotonic()`. `acquire()` attend (async),
@@ -386,7 +401,7 @@ données fausses silencieusement.
 - **Listings hétérogènes** : logements mélangés avec commerces et parkings (Burger),
   location mélangée avec vente et tous cantons (Rosset). **Étiqueter, ne pas écarter** :
   le scraper remonte tout et renseigne `property_type`, `canton` (et `listing_type` pour
-  la vente) ; le filtrage se fait en aval. Ne pas se fier aux paramètres de filtre de la
+  la vente) dans le `Listing` (§5.1) ; le filtrage se fait en aval. Ne pas se fier aux paramètres de filtre de la
   source pour typer une annonce : ils sont parfois ignorés côté serveur.
 - **Canton** tantôt en toutes lettres, tantôt en code, parfois absent. La colonne est un
   `VARCHAR(2)` : normaliser.
@@ -462,8 +477,9 @@ va dans `unit/`, à côté du code qu'il couvre.
 
 **`ScraperContractMixin`** (#48) est hérité par le test de chaque scraper et vérifie
 cinq invariants sans duplication : la fixture produit au moins une annonce, retour
-`list`, champs requis non vides (`external_url` commence par `http`), `fingerprint` hex
-de 64 caractères, idempotence sur le même HTML. Sans le premier, une fixture vide fait
+`list` de `Listing` (dont `__post_init__` vérifie les champs requis), annonces
+immuables jusqu'aux images (hashables), `fingerprint` hex de 64 caractères, idempotence
+sur le même HTML. Sans le premier, une fixture vide fait
 passer les quatre autres à vide : ils bouclent sur les annonces. `fetch_listings` étant
 asynchrone, le mixin se combine avec `IsolatedAsyncioTestCase` ; il patche
 `httpx.AsyncClient.get` avec la fixture, jamais le réseau.
@@ -619,3 +635,7 @@ d'implémenter les stories concernées.
     les 29 fiches genevoises du spike, au-delà de l'objectif d'alerte < 3 min), sauf à
     ne récupérer que les fiches nouvelles. Si on le fait : nouvelle fixture de fiche
     détail et mise à jour de `docs/spike-agencies.md`.
+11. **`dict` → `Listing` dans les stories aval.** #46, #51, #54 et #59 décrivent un
+    `listing: dict` (dedup, enrichissement, matching, notification). Depuis #114, les
+    scrapers produisent des `Listing` : lire ces stories avec `listing: Listing`, accès
+    par attribut (`listing.price_chf`) et non par clé.
