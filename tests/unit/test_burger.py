@@ -132,6 +132,30 @@ class TestBurgerScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
         with self.assertRaisesRegex(ValueError, "title"):
             BurgerScraper().parse_listing(page, url)
 
+    @patch("httpx.AsyncClient.get", new_callable=AsyncMock)
+    async def test_burger_invalid_fiche_is_skipped(self, mock_get: AsyncMock) -> None:
+        """A fiche Listing rejects is logged and skipped; the other fiches come out."""
+        studio = LOUER + "geneve-studio-meuble"
+
+        def get(url: str) -> MagicMock:
+            if url == studio:
+                html = response_from_fixture("burger/geneve-studio-meuble.html").text
+                return MagicMock(
+                    text=re.sub(r"<h1[^>]*>.*?</h1>", "", html, flags=re.S)
+                )
+            return fake_get(url)
+
+        mock_get.side_effect = get
+        expected = len(await self.fetch_from_fixture()) - 1
+
+        with self.assertLogs("flatpulse.scrapers.base", "WARNING") as captured:
+            listings = await BurgerScraper().fetch_listings()
+
+        self.assertEqual(len(listings), expected)
+        self.assertNotIn(studio, [listing.external_url for listing in listings])
+        [warning] = captured.output
+        self.assertIn(studio, warning)
+
     async def test_burger_shared_url_prefix_gives_two_listings(self) -> None:
         """Two fiches whose URLs share a prefix stay two listings."""
         listings = await self.fetch_from_fixture()

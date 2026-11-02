@@ -1,6 +1,7 @@
 """Scraper for Burger Immobilier: the sitemap lists every fiche, each fiche is a listing."""
 
 import logging
+from functools import partial
 from urllib.parse import urljoin
 
 import httpx
@@ -17,7 +18,7 @@ class BurgerScraper(HttpScraper):
     base_url = "https://www.burger-sa.ch/sitemap.php"
 
     async def fetch_listings(self) -> list[Listing]:
-        """Download the sitemap, then each rental fiche it lists; skip failing fiches."""
+        """Download the sitemap, then each rental fiche; skip failing or invalid ones."""
         listings: list[Listing] = []
         async with httpx.AsyncClient() as client:
             sitemap = await client.get(self.base_url)
@@ -32,8 +33,11 @@ class BurgerScraper(HttpScraper):
                         "Fiche %s ignorée : %r", url, error
                     )
                     continue
-                listing = self.parse_listing(Selector(text=fiche.text), url)
-                listings.append(listing)
+                listing = self._parse_or_skip(
+                    partial(self.parse_listing, Selector(text=fiche.text), url)
+                )
+                if listing is not None:
+                    listings.append(listing)
         return listings
 
     def listing_nodes(self, page: Selector) -> list[Selector]:
