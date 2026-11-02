@@ -3,7 +3,7 @@
 from parsel import Selector
 
 from flatpulse.common.models import Listing
-from flatpulse.common.utils import parse_rooms, parse_surface, parse_swiss_rent
+from flatpulse.common.utils import parse_rooms, parse_surface, parse_swiss_price
 from flatpulse.scrapers.base import HttpScraper
 
 
@@ -43,4 +43,4 @@ class NaefScraper(HttpScraper):
         """Parse the monthly rent into centimes; None when absent or on request."""
         if node.jmespath("loyer_sur_demande").get() == "oui":
             return None
-        return parse_swiss_rent(cls._text(node, "loyer_mensuel_brut"), None)
+        return parse_swiss_price(cls._text(node, "loyer_mensuel_brut"))

@@ -2,10 +2,9 @@
 
 import os
 import unittest
-from typing import Any
 from unittest.mock import patch
 
-from flatpulse.common.utils import parse_rooms, parse_swiss_rent
+from flatpulse.common.utils import parse_rooms, parse_swiss_price
 from flatpulse.config import REQUIRED_VARS, Config
 
 
@@ -14,19 +13,15 @@ class TestUtils(unittest.TestCase):
 
     def setUp(self) -> None:
         """Set up test fixtures, if any."""
-        self.prices_test_set: list[dict[str, Any]] = [
-            {"input": "CHF 1'850.–/mois", "expected": 185000, "surface_m2": None},  # noqa: RUF001
-            {"input": "CHF 2'400", "expected": 240000, "surface_m2": None},
-            {"input": "CHF 1'234.56", "expected": 123456, "surface_m2": None},
-            {"input": "Fr. 950.—", "expected": 95000, "surface_m2": None},
-            {"input": "Prix sur demande", "expected": None, "surface_m2": None},
-            {"input": "Preis auf Anfrage", "expected": None, "surface_m2": None},
-            {"input": None, "expected": None, "surface_m2": None},
-            {"input": "CHF 18'720.- / an", "expected": 156000, "surface_m2": None},
-            {"input": "CHF 24'000.— / année", "expected": 200000, "surface_m2": None},
-            {"input": "CHF 600.- / m² / an", "expected": 500000, "surface_m2": 100},
-            {"input": "CHF 260.— / m2 / année", "expected": None, "surface_m2": None},
-        ]
+        self.prices_test_set = {
+            "CHF 1'850.–/mois": 185000,  # noqa: RUF001
+            "CHF 2'400": 240000,
+            "CHF 1'234.56": 123456,
+            "Fr. 950.—": 95000,
+            "Prix sur demande": None,
+            "Preis auf Anfrage": None,
+            None: None,
+        }
         self.rooms_test_set = {
             "2 chambres": 2,
             "1.5 pièces": 1.5,
@@ -39,12 +34,8 @@ class TestUtils(unittest.TestCase):
         }
 
     def test_parse_price(self) -> None:
-        for test_case in self.prices_test_set:
-            self.assertEqual(
-                parse_swiss_rent(test_case["input"], test_case["surface_m2"]),
-                test_case["expected"],
-                test_case["input"],
-            )
+        for test, expected in self.prices_test_set.items():
+            self.assertEqual(parse_swiss_price(test), expected, test)
 
     def test_parse_rooms(self) -> None:
         for test, expected in self.rooms_test_set.items():
