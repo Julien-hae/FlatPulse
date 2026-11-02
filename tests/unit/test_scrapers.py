@@ -240,13 +240,13 @@ class TestScraperContract(unittest.TestCase):
                 build()
 
     def test_listing_rejects_empty_optional_text(self) -> None:
-        listing = Listing(
-            external_id="1",
-            external_url="http://example.com",
-            title="Test",
-            description="",
-        )
-        self.assertIsNone(listing.description)
+        with self.assertRaises(ValueError):
+            Listing(
+                external_id="1",
+                external_url="http://example.com",
+                title="Test",
+                description="",
+            )
 
     def test_listing_rejects_canton_name(self) -> None:
         with self.assertRaises(ValueError):

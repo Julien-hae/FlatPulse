@@ -2,9 +2,8 @@
 
 import hashlib
 import re
-from dataclasses import dataclass, fields
+from dataclasses import dataclass
 from enum import StrEnum
-from typing import get_type_hints
 
 
 @dataclass
@@ -71,8 +70,8 @@ class Listing:
 
     def __post_init__(self) -> None:
         """Check fields."""
-        self._set_empty_str_fields_to_none()
         self._required_fields()
+        self._validate_optional_texts()
         self._validate_positive_fields()
         self._validate_canton()
 
@@ -108,14 +107,18 @@ class Listing:
         """A ValueError naming the faulty field and the listing it belongs to."""
         return ValueError(f"{field} {problem} ({self.external_url})")
 
-    def _set_empty_str_fields_to_none(self) -> None:
-        """Set blank optional string fields to None."""
-        hints = get_type_hints(type(self))
-        for field in fields(self):
-            if hints[field.name] == str | None:
-                value = getattr(self, field.name)
-                if value is not None and not value.strip():
-                    object.__setattr__(self, field.name, None)
+    def _validate_optional_texts(self) -> None:
+        """An absent text is None: an empty one means a selector went wrong."""
+        texts = {
+            "address": self.address,
+            "postal_code": self.postal_code,
+            "city": self.city,
+            "canton": self.canton,
+            "description": self.description,
+        }
+        for field, value in texts.items():
+            if value is not None and not value.strip():
+                raise self._invalid(field, "is empty: use None for an absent text")
 
     @property
     def fingerprint(self) -> str:

@@ -77,8 +77,8 @@ class ComptoirScraper(HttpScraper):
         return url.rstrip("/").rsplit("/", 1)[-1]
 
     def _get_description(self, node: Selector) -> str | None:
-        """Return the description text."""
-        return node.css("div.rich-text").xpath("normalize-space()").get()
+        """Return the description text, None when the block is missing or empty."""
+        return node.css("div.rich-text").xpath("normalize-space()").get() or None
 
     def _get_type(self, node: Selector) -> str:
         """Return the property type, shown as the first tag of the card."""
