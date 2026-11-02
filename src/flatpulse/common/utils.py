@@ -28,7 +28,7 @@ _PER_YEAR = re.compile(_UNIT + r"(?:an|année|jahr)\b|\bp\.\s?a\.", re.I)
 _PER_M2 = re.compile(_UNIT + r"m[²2]\b", re.I)
 
 
-def parse_monthly_rent(text: str | None, surface_m2: float | None = None) -> int | None:
+def parse_monthly_rent(text: str | None, surface_m2: float | None) -> int | None:
     """Monthly rent in centimes, whatever the period or unit the agency displays.
 
     « / an » is divided by 12; « / m² » is multiplied by the surface,
@@ -37,13 +37,14 @@ def parse_monthly_rent(text: str | None, surface_m2: float | None = None) -> int
     amount = parse_swiss_price(text)
     if amount is None or text is None:
         return None
+    monthly: float = amount
     if _PER_M2.search(text):
         if surface_m2 is None:
             return None
-        amount = amount * surface_m2  # type: ignore[assignment]
+        monthly *= surface_m2
     if _PER_YEAR.search(text) and not _PER_MONTH.search(text):
-        amount = amount / 12  # type: ignore[assignment]
-    return round(amount)
+        monthly /= 12
+    return round(monthly)
 
 
 def parse_rooms(text: str | None) -> float | None:

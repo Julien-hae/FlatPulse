@@ -113,5 +113,9 @@ class TestComptoirScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase
         """An office priced « / an » is listed under its heading."""
         await self.assert_listing(
             "bureau-louer-au-centre-de-monthey",
-            {"title": "Bureau à louer au centre de Monthey", "nb_rooms": None},
+            {
+                "title": "Bureau à louer au centre de Monthey",
+                "nb_rooms": None,
+                "price_chf": 156000,
+            },
         )
