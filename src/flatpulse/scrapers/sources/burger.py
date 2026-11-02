@@ -42,7 +42,7 @@ class BurgerScraper(HttpScraper):
 
     def parse_listing(self, node: Selector, url: str | None = None) -> Listing:
         """Extract the listing from a fiche page, known by `url` or by its canonical link."""
-        url = url or node.css("link[rel=canonical]::attr(href)").get()
+        url = url or node.css("link[rel=canonical]::attr(href)").get("")
         details = node.css("div.space-y-4.mt-6")
         address = [line.strip() for line in details.css("div.text-base::text").getall()]
         features = " ".join(details.css("div.text-sm::text").getall())
@@ -50,7 +50,7 @@ class BurgerScraper(HttpScraper):
         return Listing(
             external_url=url,
             external_id=url,
-            title=node.css("h1::text").get(),
+            title=node.css("h1::text").get(""),
             price_chf=parse_swiss_price(rent),
             nb_rooms=parse_rooms(features) or None,
             surface_m2=parse_surface(features),

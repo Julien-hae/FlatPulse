@@ -27,9 +27,9 @@ class MinimalScraper(HttpScraper):
 
     def parse_listing(self, node: Selector) -> Listing:
         return Listing(
-            external_id=node.attrib.get("data-id"),
-            external_url=node.css("a.title::attr(href)").get(),
-            title=node.css("a.title::text").get(),
+            external_id=node.attrib.get("data-id", ""),
+            external_url=node.css("a.title::attr(href)").get(""),
+            title=node.css("a.title::text").get(""),
             price_chf=parse_swiss_price(node.css("span.price::text").get()),
         )
 

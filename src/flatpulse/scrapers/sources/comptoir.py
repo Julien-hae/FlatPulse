@@ -54,7 +54,7 @@ class ComptoirScraper(HttpScraper):
         rooms = next((tag for tag in tags if "pièce" in tag.lower()), None)
         return Listing(
             title=self._get_title(node),
-            external_url=node.css("a:has(h2)::attr(href)").get(),
+            external_url=node.css("a:has(h2)::attr(href)").get(""),
             price_chf=parse_swiss_price(node.css("div.heading-4::text").get()),
             nb_rooms=parse_rooms(rooms),
             external_id=self._get_id(node),

@@ -75,7 +75,6 @@ known-first-party = ["flatpulse"]
 python_version = "3.14"
 # numpy removed numpy.typing.mypy_plugin in 2.3; the stubs are shipped inline now
 strict = true
-disable_error_code = ["arg-type"]
 
 [tool.coverage.run]
 command_line = "-m xmlrunner discover --output-file junittest.xml"

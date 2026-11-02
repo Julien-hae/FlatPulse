@@ -21,10 +21,11 @@ class NaefScraper(HttpScraper):
     def parse_listing(self, node: Selector) -> Listing:
         """Extract the listing fields from a property node."""
         return Listing(
-            external_id=self._text(node, "no_dossier"),
-            external_url=self._text(node, "link"),
+            external_id=self._text(node, "no_dossier") or "",
+            external_url=self._text(node, "link") or "",
             title=self._text(node, "intitule_plaquette")
-            or self._text(node, "type_designation_fr"),
+            or self._text(node, "type_designation_fr")
+            or "",
             price_chf=self._parse_naef_price(node),
             nb_rooms=parse_rooms(self._text(node, "nb_pieces")) or None,
             surface_m2=parse_surface(self._text(node, "surface_habitable")),
