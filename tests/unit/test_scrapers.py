@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, patch
 from parsel import Selector
 
 from flatpulse.common.models import Listing
-from flatpulse.common.utils import parse_swiss_price
+from flatpulse.common.utils import parse_monthly_rent
 from flatpulse.scrapers.base import (
     AbstractScraper,
     HttpScraper,
@@ -31,7 +31,7 @@ class MinimalScraper(HttpScraper):
             external_id=node.attrib.get("data-id", ""),
             external_url=node.css("a.title::attr(href)").get(""),
             title=node.css("a.title::text").get(""),
-            price_chf=parse_swiss_price(node.css("span.price::text").get()),
+            price_chf=parse_monthly_rent(node.css("span.price::text").get()),
         )
 
 

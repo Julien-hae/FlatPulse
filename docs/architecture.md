@@ -214,7 +214,7 @@ Arborescence cible (`src/flatpulse/`) :
 ```
 config.py              Config, validation fail-fast au démarrage
 models.py              Listing, PropertyType, SourceConfig, MatchResult, ScrapingStats
-utils.py               parse_swiss_price, parse_rooms
+utils.py               parse_swiss_price, parse_rooms, parse_monthly_rent
 db.py                  pool psycopg + helpers CRUD
 main.py                orchestration du pipeline
 common/

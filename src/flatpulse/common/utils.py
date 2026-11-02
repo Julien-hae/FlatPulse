@@ -19,6 +19,30 @@ def parse_swiss_price(text: str | None) -> int | None:
     return francs * 100 + cents
 
 
+_PER_YEAR = re.compile(
+    r"/\s*(an|année)\b|par an|annuel|p\.\s?a\.|pro jahr|/\s*jahr|jährlich", re.I
+)
+_PER_M2 = re.compile(r"/\s*m[²2]\b|par m[²2]|pro m[²2]", re.I)
+
+
+def parse_monthly_rent(text: str | None, surface_m2: float | None = None) -> int | None:
+    """Monthly rent in centimes, whatever the period or unit the agency displays.
+
+    « / an » is divided by 12; « / m² » is multiplied by the surface,
+    and gives None without a surface rather than a per-m² amount posing as a rent.
+    """
+    amount = parse_swiss_price(text)
+    if amount is None or text is None:
+        return None
+    if _PER_M2.search(text):
+        if surface_m2 is None:
+            return None
+        amount = round(amount * surface_m2)
+    if _PER_YEAR.search(text):
+        amount = round(amount / 12)
+    return amount
+
+
 def parse_rooms(text: str | None) -> float | None:
     """Format a Swiss rooms string into a float representing the number of rooms."""
     if text is None:
