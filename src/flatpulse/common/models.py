@@ -4,6 +4,7 @@ import hashlib
 import re
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import Any
 
 
 @dataclass
@@ -26,7 +27,7 @@ class MatchResult:
     profile_id: int
     user_id: int
     score: float
-    matched_criteria: Listing
+    matched_criteria: dict[str, Any]
 
 
 @dataclass
