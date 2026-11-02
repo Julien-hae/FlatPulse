@@ -4,7 +4,7 @@ import httpx
 from parsel import Selector
 
 from flatpulse.common.models import Listing
-from flatpulse.common.utils import parse_rooms, parse_surface, parse_swiss_price
+from flatpulse.common.utils import parse_rooms, parse_swiss_price
 from flatpulse.scrapers.base import HttpScraper
 
 
@@ -79,11 +79,6 @@ class ComptoirScraper(HttpScraper):
         """Return the description text."""
         return node.css("div.rich-text").xpath("normalize-space()").get()
 
-    def _get_surface(self, node: Selector) -> float | None:
-        """Return the surface in m2."""
-        surface = node.css("div.inline-block").xpath("normalize-space()").get()
-        return parse_surface(surface)
-
     def _get_type(self, node: Selector) -> str:
         """Return the property type, shown as the first tag of the card."""
         property_type = node.css("div.inline-block").xpath("normalize-space()").get()
@@ -102,9 +97,3 @@ class ComptoirScraper(HttpScraper):
     def _card_url(node: Selector) -> str | None:
         """Return the card URL, used to name the faulty listing in error messages."""
         return node.css("a:has(h2)::attr(href)").get()
-
-    def _field(self, node: Selector, label: str) -> str | None:
-        """Return the <td> text next to the <th> whose label matches."""
-        return node.xpath(
-            f"//th[normalize-space()='{label}']/following-sibling::td[1]/text()"
-        ).get()
