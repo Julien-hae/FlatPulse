@@ -1,10 +1,9 @@
 """Scraper for Naef Immobilier, which exposes its whole catalogue as one JSON payload."""
 
-from typing import Any
-
 from parsel import Selector
 
-from flatpulse.common.utils import parse_rooms, parse_surface, parse_swiss_price
+from flatpulse.common.models import Listing
+from flatpulse.common.utils import parse_rooms, parse_surface, parse_swiss_rent
 from flatpulse.scrapers.base import HttpScraper
 
 
@@ -19,19 +18,19 @@ class NaefScraper(HttpScraper):
         """Return one JSON node per property in the payload."""
         return list(page.jmespath("props[*]"))
 
-    def parse_listing(self, node: Selector) -> dict[str, Any]:
+    def parse_listing(self, node: Selector) -> Listing:
         """Extract the listing fields from a property node."""
-        return {
-            "external_id": self._text(node, "no_dossier"),
-            "external_url": self._text(node, "link"),
-            "title": self._text(node, "intitule_plaquette")
+        return Listing(
+            external_id=self._text(node, "no_dossier"),
+            external_url=self._text(node, "link"),
+            title=self._text(node, "intitule_plaquette")
             or self._text(node, "type_designation_fr"),
-            "price_chf": self._parse_naef_price(node),
-            "nb_rooms": parse_rooms(self._text(node, "nb_pieces")),
-            "surface_m2": parse_surface(self._text(node, "surface_habitable")),
-            "city": self._text(node, "adresse_localite"),
-            "images": node.jmespath("imgs[*]").getall(),
-        }
+            gross_monthly_rent_chf=self._parse_naef_price(node),
+            nb_rooms=parse_rooms(self._text(node, "nb_pieces")) or None,
+            surface_m2=parse_surface(self._text(node, "surface_habitable")),
+            city=self._text(node, "adresse_localite"),
+            images=node.jmespath("imgs[*]").getall(),
+        )
 
     @staticmethod
     def _text(node: Selector, key: str) -> str | None:
@@ -44,4 +43,4 @@ class NaefScraper(HttpScraper):
         """Parse the monthly rent into centimes; None when absent or on request."""
         if node.jmespath("loyer_sur_demande").get() == "oui":
             return None
-        return parse_swiss_price(cls._text(node, "loyer_mensuel_brut"))
+        return parse_swiss_rent(cls._text(node, "loyer_mensuel_brut"), None)

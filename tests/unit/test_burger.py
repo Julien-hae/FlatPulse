@@ -1,9 +1,9 @@
 """Unit tests for the Burger Immobilier scraper."""
 
 import unittest
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from flatpulse.common.models import Listing
 from flatpulse.scrapers.sources.burger import BurgerScraper
 from tests.contract.test_scraper_contract import ScraperContractMixin
 from tests.helpers import response_from_fixture
@@ -29,7 +29,7 @@ class TestBurgerScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
     scraper_class = BurgerScraper
     fixture_name = "burger_sitemap.xml"
 
-    async def fetch_from_fixture(self) -> list[dict[str, Any]]:
+    async def fetch_from_fixture(self) -> list[Listing]:
         """Serve the sitemap, then its rental fiches."""
         with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get:
             mock_get.side_effect = fake_get
@@ -125,9 +125,9 @@ class TestBurgerScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
         listings = await self.fetch_from_fixture()
 
         ids = {
-            item["external_id"]
+            item.external_id
             for item in listings
-            if item["external_id"].startswith(MONT_BLANC)
+            if item.external_id.startswith(MONT_BLANC)
         }
 
         self.assertEqual(ids, {MONT_BLANC, MONT_BLANC + "-1017-000402"})

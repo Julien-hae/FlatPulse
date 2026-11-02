@@ -22,11 +22,10 @@ class TestNaefScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
             "261036.6001",
             {
                 "title": "Appartement duplex de 6 pièces situé dans le quartier...",
-                "price_chf": 455000,
+                "gross_monthly_rent_chf": 455000,
                 "nb_rooms": 6.0,
                 "city": "Genève",
-                "external_url": "https://www.naef.ch/location/appartement/1202/"
-                "avenue-de-la-foret-5-geneve/261036.6001/",
+                "external_url": "https://www.naef.ch/location/appartement/1202/avenue-de-la-foret-5-geneve/261036.6001/",
             },
         )
 
@@ -42,6 +41,7 @@ class TestNaefScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
                 "title": "Place de parc intérieure",
                 "price_chf": 18000,
                 "city": "Genève",
+                "nb_rooms": None,
             },
         )
 

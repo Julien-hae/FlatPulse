@@ -1,11 +1,10 @@
 """Scraper for Comptoir Immobilier, whose rental catalogue is paginated static HTML."""
 
-from typing import Any
-
 import httpx
 from parsel import Selector
 
-from flatpulse.common.utils import parse_rooms, parse_surface, parse_swiss_price
+from flatpulse.common.models import Listing
+from flatpulse.common.utils import parse_rooms, parse_surface, parse_swiss_rent
 from flatpulse.scrapers.base import HttpScraper
 
 
@@ -29,9 +28,9 @@ class ComptoirScraper(HttpScraper):
         ]
         return max(numbers, default=1)
 
-    async def fetch_listings(self) -> list[dict[str, Any]]:
+    async def fetch_listings(self) -> list[Listing]:
         """Fetch every catalogue page and parse its property cards."""
-        listings: list[dict[str, Any]] = []
+        listings: list[Listing] = []
         async with httpx.AsyncClient() as client:
             page_number, last_page = 1, 1
             while page_number <= last_page:
@@ -41,30 +40,28 @@ class ComptoirScraper(HttpScraper):
                 if page_number == 1:
                     last_page = self.nb_pages(page)
                 listings.extend(
-                    self._build_listing(self.parse_listing(node))
-                    for node in self.listing_nodes(page)
+                    self.parse_listing(node) for node in self.listing_nodes(page)
                 )
                 page_number += 1
         return listings
 
-    def parse_listing(self, node: Selector) -> dict[str, Any]:
+    def parse_listing(self, node: Selector) -> Listing:
         """Extract the listing fields from a property card."""
         tags = [
             tag.xpath("normalize-space()").get("")
             for tag in node.css("div.inline-block")
         ]
         rooms = next((tag for tag in tags if "pièce" in tag.lower()), None)
-        return {
-            "title": self._get_title(node),
-            "type": self._field(node, label="Type de bien"),
-            "address": self._get_adress(node),
-            "external_url": node.css("a:has(h2)::attr(href)").get(),
-            "price_chf": parse_swiss_price(node.css("div.heading-4::text").get()),
-            "surface_m2": self._field(node, label="Surface habitable"),
-            "nb_rooms": parse_rooms(rooms),
-            "external_id": self._get_id(node),
-            "description": self._get_description(node),
-        }
+        return Listing(
+            title=self._get_title(node),
+            external_url=node.css("a:has(h2)::attr(href)").get(),
+            gross_monthly_rent_chf=parse_swiss_rent(
+                node.css("div.heading-4::text").get(), self._get_surface(node)
+            ),
+            nb_rooms=parse_rooms(rooms),
+            external_id=self._get_id(node),
+            description=self._get_description(node),
+        )
 
     def _get_title(self, node: Selector) -> str:
         """Return the card heading, or 'type, location' when the <h2> is empty."""

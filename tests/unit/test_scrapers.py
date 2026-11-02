@@ -1,14 +1,13 @@
 """Unit tests for the scrapers base class."""
 
 import unittest
-from typing import Any
 from unittest.mock import AsyncMock, patch
 
 from parsel import Selector
 
-from flatpulse.common.utils import parse_swiss_price
+from flatpulse.common.models import Listing
+from flatpulse.common.utils import parse_swiss_rent
 from flatpulse.scrapers.base import (
-    OPTIONAL_FIELDS,
     AbstractScraper,
     HttpScraper,
 )
@@ -24,13 +23,22 @@ class MinimalScraper(HttpScraper):
     def listing_nodes(self, page: Selector) -> list[Selector]:
         return page.css("div.listing")
 
-    def parse_listing(self, node: Selector) -> dict[str, Any]:
-        return {
-            "external_id": node.attrib.get("data-id"),
-            "external_url": node.css("a.title::attr(href)").get(),
-            "title": node.css("a.title::text").get(),
-            "price_chf": parse_swiss_price(node.css("span.price::text").get()),
-        }
+    def parse_listing(self, node: Selector) -> Listing:
+        return Listing(
+            external_id=node.attrib.get("data-id"),
+            external_url=node.css("a.title::attr(href)").get(),
+            title=node.css("a.title::text").get(),
+            gross_monthly_rent_chf=parse_swiss_rent(node.css("span.price::text").get()),
+        )
+
+
+class AlternatingInvalidScraper(MinimalScraper):
+    """Scraper test double that rejects the middle listing."""
+
+    def parse_listing(self, node: Selector) -> Listing:
+        if node.attrib.get("data-id") == "102":
+            raise ValueError("invalid listing")
+        return super().parse_listing(node)
 
 
 class TestMinimalScraperContract(
@@ -45,6 +53,8 @@ class TestMinimalScraperContract(
 class TestHttpScraper(unittest.IsolatedAsyncioTestCase):
     """Unit tests for the HttpScraper class."""
 
+    scraper = MinimalScraper()
+
     @patch("httpx.AsyncClient.get", new_callable=AsyncMock)
     async def test_fetch_returns_list_of_dicts_with_required_keys(
         self, mock_get: AsyncMock
@@ -52,37 +62,34 @@ class TestHttpScraper(unittest.IsolatedAsyncioTestCase):
         """Test that fetch_listings returns a list of dicts with the required keys."""
         mock_get.return_value = response_from_fixture("sample_listing.html")
 
-        scraper = MinimalScraper()
-        result = await scraper.fetch_listings()
+        result = await self.scraper.fetch_listings()
 
         mock_get.assert_awaited_once()
         self.assertIsInstance(result, list)
         self.assertEqual(len(result), 3)
         for listing in result:
-            self.assertIsInstance(listing, dict)
-            self.assertIsNotNone(listing["external_id"])
-            self.assertTrue(listing["external_url"].startswith("http"))
-            self.assertIsNotNone(listing["title"])
+            self.assertIsInstance(listing, Listing)
+            self.assertIsNotNone(listing.external_id)
+            self.assertTrue(str(listing.external_url).startswith("http"))
+            self.assertIsNotNone(listing.title)
 
     @patch("httpx.AsyncClient.get", new_callable=AsyncMock)
     async def test_missing_price_returns_none(self, mock_get: AsyncMock) -> None:
         """Test that listings with missing or non-numeric prices return None for price_chf and do not crashes."""
         mock_get.return_value = response_from_fixture("listing_no_price.html")
 
-        scraper = MinimalScraper()
-        result = await scraper.fetch_listings()
+        result = await self.scraper.fetch_listings()
 
         for listing in result:
-            self.assertIsNone(listing["price_chf"])
+            self.assertIsNone(listing.gross_monthly_rent_chf)
 
     @patch("httpx.AsyncClient.get", new_callable=AsyncMock)
     async def test_fingerprint_deterministic(self, mock_get: AsyncMock) -> None:
         """Test that the fingerprint method returns the same value for the same input."""
         mock_get.return_value = response_from_fixture("same_listing.html")
 
-        scraper = MinimalScraper()
-        result = await scraper.fetch_listings()
-        self.assertEqual(result[0]["fingerprint"], result[1]["fingerprint"])
+        result = await self.scraper.fetch_listings()
+        self.assertEqual(result[0].fingerprint, result[1].fingerprint)
 
     @patch("httpx.AsyncClient.get", new_callable=AsyncMock)
     async def test_fingerprint_changes_on_price_change(
@@ -91,13 +98,27 @@ class TestHttpScraper(unittest.IsolatedAsyncioTestCase):
         """Test that the fingerprint method returns different values when the price changes."""
         mock_get.return_value = response_from_fixture("different_price.html")
 
-        scraper = MinimalScraper()
-        result = await scraper.fetch_listings()
-        self.assertNotEqual(result[0]["fingerprint"], result[1]["fingerprint"])
+        result = await self.scraper.fetch_listings()
+        self.assertNotEqual(result[0].fingerprint, result[1].fingerprint)
+
+    @patch("httpx.AsyncClient.get", new_callable=AsyncMock)
+    async def test_invalid_listing_is_skipped_and_logged(
+        self, mock_get: AsyncMock
+    ) -> None:
+        mock_get.return_value = response_from_fixture("sample_listing.html")
+        scraper = AlternatingInvalidScraper()
+
+        with self.assertLogs("flatpulse.scrapers.base", level="WARNING") as captured:
+            result = await scraper.fetch_listings()
+
+        self.assertEqual([listing.external_id for listing in result], ["101", "103"])
+        self.assertTrue(
+            any("4 pièces Eaux-Vives" in message for message in captured.output)
+        )
 
 
 class TestScraperContract(unittest.TestCase):
-    """Tests for the abstract contract and dict building."""
+    """Tests for the abstract contract and Listing building."""
 
     def test_abstract_classes_cannot_be_instantiated(self) -> None:
         """AbstractScraper and HttpScraper are abstract and must not be instantiable."""
@@ -106,19 +127,42 @@ class TestScraperContract(unittest.TestCase):
         with self.assertRaises(TypeError):
             HttpScraper()  # type: ignore[abstract]
 
-    def test_missing_optional_fields_become_none(self) -> None:
-        """Optional fields omitted by parse_listing are filled with None."""
-        listing = MinimalScraper()._build_listing(
-            {
-                "external_id": "1",
-                "external_url": "https://example.com/a",
-                "title": "Flat A",
-            }
-        )
-        for field in OPTIONAL_FIELDS:
-            self.assertIsNone(listing[field])
+    def test_listing_rejects_empty_required_field(self) -> None:
+        with self.assertRaises(ValueError):
+            Listing(external_id="", external_url="http://example.com", title="Test")
 
-    def test_missing_required_field_raises(self) -> None:
-        """A missing required field must fail loudly."""
-        with self.assertRaises(KeyError):
-            MinimalScraper()._build_listing({"external_id": "1", "title": "Flat A"})
+    def test_listing_rejects_zero_price(self) -> None:
+        with self.assertRaises(ValueError):
+            Listing(
+                external_id="1",
+                external_url="http://example.com",
+                title="Test",
+                gross_monthly_rent_chf=0,
+            )
+
+    def test_listing_rejects_zero_rooms(self) -> None:
+        with self.assertRaises(ValueError):
+            Listing(
+                external_id="1",
+                external_url="http://example.com",
+                title="Test",
+                nb_rooms=0,
+            )
+
+    def test_listing_rejects_empty_optional_text(self) -> None:
+        listing = Listing(
+            external_id="1",
+            external_url="http://example.com",
+            title="Test",
+            description="",
+        )
+        self.assertIsNone(listing.description)
+
+    def test_listing_rejects_canton_name(self) -> None:
+        with self.assertRaises(ValueError):
+            Listing(
+                external_id="1",
+                external_url="http://example.com",
+                title="Test",
+                canton="Geneva",
+            )
