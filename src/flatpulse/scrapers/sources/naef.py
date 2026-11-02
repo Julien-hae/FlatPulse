@@ -25,7 +25,7 @@ class NaefScraper(HttpScraper):
             external_url=self._text(node, "link"),
             title=self._text(node, "intitule_plaquette")
             or self._text(node, "type_designation_fr"),
-            gross_monthly_rent_chf=self._parse_naef_price(node),
+            price_chf=self._parse_naef_price(node),
             nb_rooms=parse_rooms(self._text(node, "nb_pieces")) or None,
             surface_m2=parse_surface(self._text(node, "surface_habitable")),
             city=self._text(node, "adresse_localite"),

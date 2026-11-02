@@ -51,7 +51,7 @@ class BurgerScraper(HttpScraper):
             external_url=url,
             external_id=url,
             title=node.css("h1::text").get(),
-            gross_monthly_rent_chf=parse_swiss_rent(rent, parse_surface(features)),
+            price_chf=parse_swiss_rent(rent, parse_surface(features)),
             nb_rooms=parse_rooms(features) or None,
             surface_m2=parse_surface(features),
             address=address[0] if address else None,

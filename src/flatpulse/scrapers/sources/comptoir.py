@@ -55,7 +55,7 @@ class ComptoirScraper(HttpScraper):
         return Listing(
             title=self._get_title(node),
             external_url=node.css("a:has(h2)::attr(href)").get(),
-            gross_monthly_rent_chf=parse_swiss_rent(
+            price_chf=parse_swiss_rent(
                 node.css("div.heading-4::text").get(), self._get_surface(node)
             ),
             nb_rooms=parse_rooms(rooms),

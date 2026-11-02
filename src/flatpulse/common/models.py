@@ -59,11 +59,8 @@ class Listing:
     external_url: URL
     title: str
     property_type: PropertyType | None = None
-    net_monthly_rent_chf: int | None = None  # centimes, loyer MENSUEL charges exclues
-    utilities_monthly_chf: int | None = None  # centimes, part mensuelle des charges
-    gross_monthly_rent_chf: int | None = (
-        None  # centimes, loyer MENSUEL charges comprises
-    )
+    price_chf: int | None = None  # centimes, loyer MENSUEL charges comprises
+    charges_chf: int | None = None  # centimes, part des charges dans price_chf
     nb_rooms: float | None = None
     surface_m2: float | None = None
     floor: int | None = None  # 0 = rez, négatif = sous-sol
@@ -101,18 +98,8 @@ class Listing:
 
     def _validate_positive_fields(self) -> None:
         """Validate positive fields."""
-        if self.net_monthly_rent_chf is not None and self.net_monthly_rent_chf < 0:
-            raise ValueError(
-                f"net_monthly_rent_chf must be positive : got {self.net_monthly_rent_chf}"
-            )
-        if self.utilities_monthly_chf is not None and self.utilities_monthly_chf < 0:
-            raise ValueError(
-                f"utilities_monthly_chf must be positive : got {self.utilities_monthly_chf}"
-            )
-        if self.gross_monthly_rent_chf is not None and self.gross_monthly_rent_chf < 0:
-            raise ValueError(
-                f"gross_monthly_rent_chf must be positive : got {self.gross_monthly_rent_chf}"
-            )
+        if self.charges_chf is not None and self.charges_chf < 0:
+            raise ValueError(f"charges_chf must be positive : got {self.charges_chf}")
         if self.nb_rooms is not None and self.nb_rooms <= 0:
             raise ValueError(
                 f"nb_rooms must be strictly positive : got {self.nb_rooms}"
@@ -136,15 +123,3 @@ class Listing:
         """Compute a unique fingerprint for a listing based on its URL, title, and ID."""
         fingerprint_source = f"{self.external_url!s}|{self.title}|{self.price_chf}"
         return hashlib.sha256(fingerprint_source.encode()).hexdigest()
-
-    @property
-    def price_chf(self) -> float | None:
-        """Return the monthly price in CHF."""
-        if self.gross_monthly_rent_chf is not None:
-            return self.gross_monthly_rent_chf
-        if (
-            self.net_monthly_rent_chf is not None
-            and self.utilities_monthly_chf is not None
-        ):
-            return self.net_monthly_rent_chf + self.utilities_monthly_chf
-        return None

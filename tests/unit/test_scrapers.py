@@ -28,7 +28,7 @@ class MinimalScraper(HttpScraper):
             external_id=node.attrib.get("data-id"),
             external_url=node.css("a.title::attr(href)").get(),
             title=node.css("a.title::text").get(),
-            gross_monthly_rent_chf=parse_swiss_rent(node.css("span.price::text").get()),
+            price_chf=parse_swiss_rent(node.css("span.price::text").get()),
         )
 
 
@@ -81,7 +81,7 @@ class TestHttpScraper(unittest.IsolatedAsyncioTestCase):
         result = await self.scraper.fetch_listings()
 
         for listing in result:
-            self.assertIsNone(listing.gross_monthly_rent_chf)
+            self.assertIsNone(listing.price_chf)
 
     @patch("httpx.AsyncClient.get", new_callable=AsyncMock)
     async def test_fingerprint_deterministic(self, mock_get: AsyncMock) -> None:
@@ -137,8 +137,20 @@ class TestScraperContract(unittest.TestCase):
                 external_id="1",
                 external_url="http://example.com",
                 title="Test",
-                gross_monthly_rent_chf=0,
+                price_chf=0,
             )
+
+    def test_listing_keeps_rent_and_charges(self) -> None:
+        """price_chf is the monthly rent charges included; charges_chf is its share."""
+        listing = Listing(
+            external_id="1",
+            external_url="https://www.naef.ch/x/",
+            title="Studio",
+            price_chf=185000,
+            charges_chf=20000,
+        )
+
+        self.assertEqual((listing.price_chf, listing.charges_chf), (185000, 20000))
 
     def test_listing_rejects_zero_rooms(self) -> None:
         with self.assertRaises(ValueError):
