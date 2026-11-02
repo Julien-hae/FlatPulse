@@ -29,7 +29,7 @@ class NaefScraper(HttpScraper):
             nb_rooms=parse_rooms(self._text(node, "nb_pieces")) or None,
             surface_m2=parse_surface(self._text(node, "surface_habitable")),
             city=self._text(node, "adresse_localite"),
-            images=node.jmespath("imgs[*]").getall(),
+            images=tuple(node.jmespath("imgs[*]").getall()),
         )
 
     @staticmethod

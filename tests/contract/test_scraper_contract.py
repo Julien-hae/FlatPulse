@@ -58,6 +58,14 @@ class ScraperContractMixin:
         for listing in result:
             self.assertIsInstance(listing, Listing)
 
+    async def test_contract_listings_are_immutable(self) -> None:
+        """Listings are frozen down to their images, so they can be hashed."""
+        result = await self.fetch_from_fixture()
+        assert isinstance(self, unittest.TestCase)
+        for listing in result:
+            self.assertIsInstance(listing.images, tuple)
+            hash(listing)
+
     async def test_contract_has_fingerprint(self) -> None:
         """Each listing carries a 64-character hex SHA-256 fingerprint."""
         result = await self.fetch_from_fixture()

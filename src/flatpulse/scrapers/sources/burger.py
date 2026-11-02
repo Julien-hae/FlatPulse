@@ -57,10 +57,10 @@ class BurgerScraper(HttpScraper):
             address=address[0] if address else None,
             city=self.city(address),
             description=node.css("div.prose").xpath("normalize-space()").get() or None,
-            images=[
+            images=tuple(
                 urljoin(self.base_url, src)
                 for src in node.css("div.swiper-slide img::attr(data-src)").getall()
-            ],
+            ),
         )
 
     @staticmethod
