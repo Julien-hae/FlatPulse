@@ -1,9 +1,13 @@
 """Unit tests for the Comptoir Immobilier scraper."""
 
 import unittest
+from unittest.mock import AsyncMock, MagicMock, patch
+
+from parsel import Selector
 
 from flatpulse.scrapers.sources.comptoir import ComptoirScraper
 from tests.contract.test_scraper_contract import ScraperContractMixin
+from tests.helpers import response_from_fixture
 
 
 class TestComptoirScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
@@ -24,6 +28,7 @@ class TestComptoirScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase
                 "title": "Bel appartement de 2,5 pièces au 6ème étage avec balcon.",
                 "price_chf": 162800,
                 "nb_rooms": 2.5,
+                "address": "Genève, Genève",
                 "external_id": "bel-appartement-de-25-pices-au-6me-tage-avec-balcon",
             },
         )
@@ -54,6 +59,29 @@ class TestComptoirScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase
                 "nb_rooms": 5.5,
             },
         )
+
+    async def test_comptoir_card_without_location(self) -> None:
+        """A card without its « Commune, Canton » line is still listed, address None."""
+        page = Selector(text=response_from_fixture(self.fixture_name).text)
+        node = self.scraper_class().listing_nodes(page)[0]
+        card = Selector(text=node.get().replace("opacity-80", "removed"))
+
+        listing = self.scraper_class().parse_listing(card.css("article")[0])
+
+        self.assertIsNone(listing.address)
+
+    @patch("httpx.AsyncClient.get", new_callable=AsyncMock)
+    async def test_comptoir_invalid_card_is_skipped(self, mock_get: AsyncMock) -> None:
+        """A card that cannot be parsed is logged and skipped; the others come out."""
+        html = response_from_fixture(self.fixture_name).text
+        broken = html.replace("<h2", "<h3", 1).replace("</h2>", "</h3>", 1)
+        mock_get.return_value = MagicMock(text=broken)
+        expected = len(await self.fetch_from_fixture()) - 1
+
+        with self.assertLogs("flatpulse.scrapers.base", "WARNING"):
+            listings = await self.scraper_class().fetch_listings()
+
+        self.assertEqual(len(listings), expected)
 
     async def test_comptoir_parking(self) -> None:
         """A parking card has a rent and no rooms."""

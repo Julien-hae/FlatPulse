@@ -1,6 +1,9 @@
 """Data models for the FlatPulse application."""
 
+import hashlib
+import re
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import Any
 
 
@@ -20,7 +23,7 @@ class SourceConfig:
 class MatchResult:
     """Represents the result of a matching operation."""
 
-    listing: dict[str, Any]
+    listing: Listing
     profile_id: int
     user_id: int
     score: float
@@ -34,3 +37,92 @@ class ScrapingStats:
     new_listings_last_hour: int = 0
     new_listings_last_6h: int = 0
     consecutive_errors: int = 0
+
+
+class PropertyType(StrEnum):
+    """Property types."""
+
+    APARTMENT = "apartment"
+    HOUSE = "house"
+    PARKING = "parking"
+    COMMERCIAL = "commercial"  # bureau, arcade, commerce, atelier
+    STORAGE = "storage"  # dépôt
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class Listing:
+    """Represents a real estate listing."""
+
+    external_id: str
+    external_url: str
+    title: str
+    property_type: PropertyType | None = None
+    price_chf: int | None = None  # centimes, loyer MENSUEL charges comprises
+    charges_chf: int | None = None  # centimes, part des charges dans price_chf
+    nb_rooms: float | None = None
+    surface_m2: float | None = None
+    floor: int | None = None  # 0 = rez, négatif = sous-sol
+    address: str | None = None  # rue et numéro
+    postal_code: str | None = None
+    city: str | None = None
+    canton: str | None = None  # code à deux lettres : "GE", "VD"…
+    description: str | None = None
+    images: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        """Check fields."""
+        self._required_fields()
+        self._validate_optional_texts()
+        self._validate_positive_fields()
+        self._validate_canton()
+
+    def _validate_canton(self) -> None:
+        """Validate canton."""
+        if self.canton is not None and re.fullmatch(r"[A-Z]{2}", self.canton) is None:
+            raise self._invalid(
+                "canton", f"must be two capital letters: {self.canton!r}"
+            )
+
+    def _required_fields(self) -> None:
+        """Validate required fields; None counts as empty, a selector returns it."""
+        if not (self.external_id or "").strip():
+            raise self._invalid("external_id", "cannot be empty")
+        if not (self.title or "").strip():
+            raise self._invalid("title", "cannot be empty")
+        if not (self.external_url or "").startswith(("http://", "https://")):
+            raise self._invalid("external_url", "must be an http(s) URL")
+
+    def _validate_positive_fields(self) -> None:
+        """Amounts, rooms and surface are > 0: an absent value is None, never 0."""
+        quantities = {
+            "price_chf": self.price_chf,
+            "charges_chf": self.charges_chf,
+            "nb_rooms": self.nb_rooms,
+            "surface_m2": self.surface_m2,
+        }
+        for field, value in quantities.items():
+            if value is not None and value <= 0:
+                raise self._invalid(field, f"must be positive: {value}")
+
+    def _invalid(self, field: str, problem: str) -> ValueError:
+        """A ValueError naming the faulty field and the listing it belongs to."""
+        return ValueError(f"{field} {problem} ({self.external_url})")
+
+    def _validate_optional_texts(self) -> None:
+        """An absent text is None: an empty one means a selector went wrong."""
+        texts = {
+            "address": self.address,
+            "postal_code": self.postal_code,
+            "city": self.city,
+            "canton": self.canton,
+            "description": self.description,
+        }
+        for field, value in texts.items():
+            if value is not None and not value.strip():
+                raise self._invalid(field, "is empty: use None for an absent text")
+
+    @property
+    def fingerprint(self) -> str:
+        """SHA-256 of URL, title and price: a price change gives a new fingerprint."""
+        fingerprint_source = f"{self.external_url}|{self.title}|{self.price_chf}"
+        return hashlib.sha256(fingerprint_source.encode()).hexdigest()

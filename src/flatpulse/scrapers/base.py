@@ -1,24 +1,17 @@
 """Base classes defining the contract every listing scraper must follow."""
 
 import asyncio
-import hashlib
+import logging
 from abc import ABC, abstractmethod
-from typing import Any
+from collections.abc import Callable
+from functools import partial
 
 import httpx
 from parsel import Selector
 
-REQUIRED_FIELDS = ("external_id", "external_url", "title")
-OPTIONAL_FIELDS = (
-    "price_chf",
-    "nb_rooms",
-    "surface_m2",
-    "floor",
-    "address",
-    "city",
-    "description",
-    "images",
-)
+from flatpulse.common.models import Listing
+
+logger = logging.getLogger(__name__)
 
 
 class AbstractScraper(ABC):
@@ -27,11 +20,11 @@ class AbstractScraper(ABC):
     rate_limit_seconds: float = 0.0
 
     @abstractmethod
-    async def fetch_listings(self) -> list[dict[str, Any]]:
-        """Fetch and return listings as a list of plain dicts."""
+    async def fetch_listings(self) -> list[Listing]:
+        """Fetch and return listings as a list of Listing."""
         raise NotImplementedError
 
-    async def run(self) -> list[dict[str, Any]]:
+    async def run(self) -> list[Listing]:
         """Orchestrate a scrape: wait for the rate limit, then fetch listings."""
         if self.rate_limit_seconds:
             await asyncio.sleep(self.rate_limit_seconds)
@@ -49,13 +42,8 @@ class HttpScraper(AbstractScraper):
         raise NotImplementedError
 
     @abstractmethod
-    def parse_listing(self, node: Selector) -> dict[str, Any]:
-        """Extract raw fields from a single listing node.
-
-        Must include the required keys (`external_id`, `external_url`,
-        `title`); any optional key from `OPTIONAL_FIELDS` may be omitted
-        when absent from the page, rather than set to None.
-        """
+    def parse_listing(self, node: Selector) -> Listing:
+        """Parse a listing node into a Listing."""
         raise NotImplementedError
 
     async def _get_html(self) -> str:
@@ -65,31 +53,26 @@ class HttpScraper(AbstractScraper):
         response.raise_for_status()
         return response.text
 
-    async def fetch_listings(self) -> list[dict[str, Any]]:
-        """Download the listing page and parse it into a list of dicts."""
+    async def fetch_listings(self) -> list[Listing]:
+        """Download the listing page and parse it into a list of Listing."""
         html = await self._get_html()
         page = Selector(text=html)
-        return [
-            self._build_listing(self.parse_listing(node))
-            for node in self.listing_nodes(page)
-        ]
-
-    def _build_listing(self, raw: dict[str, Any]) -> dict[str, Any]:
-        """Build a complete listing dict from raw parsed data.
-
-        Ensures all required fields are present and fills in optional fields if available.
-        Computes a fingerprint for the listing based on its URL, title, and price.
-        """
-        listing = {field: raw[field] for field in REQUIRED_FIELDS}
-        for field in OPTIONAL_FIELDS:
-            listing[field] = raw.get(field)
-        listing["fingerprint"] = self._fingerprint(
-            listing["external_url"], listing["title"], listing["price_chf"]
-        )
-        return listing
+        listings: list[Listing] = []
+        for node in self.listing_nodes(page):
+            listing = self._parse_or_skip(partial(self.parse_listing, node))
+            if listing is not None:
+                listings.append(listing)
+        return listings
 
     @staticmethod
-    def _fingerprint(external_url: str, title: str, price_chf: str | None) -> str:
-        """Compute a unique fingerprint for a listing based on its URL, title, and price."""
-        fingerprint_source = f"{external_url}|{title}|{price_chf}"
-        return hashlib.sha256(fingerprint_source.encode()).hexdigest()
+    def _parse_or_skip(parse: Callable[[], Listing]) -> Listing | None:
+        """Run `parse`; an invalid listing is logged and skipped, the poll goes on.
+
+        The ValueError names the faulty field and the listing's URL, so the node
+        itself (HTML or JSON) is not read again here.
+        """
+        try:
+            return parse()
+        except ValueError as error:
+            logger.warning("Skipped invalid listing: %s", error)
+            return None

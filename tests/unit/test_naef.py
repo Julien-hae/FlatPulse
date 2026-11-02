@@ -1,9 +1,14 @@
 """Unit tests for the Naef Immobilier scraper."""
 
+import json
 import unittest
+from unittest.mock import AsyncMock, MagicMock, patch
+
+from parsel import Selector
 
 from flatpulse.scrapers.sources.naef import NaefScraper
 from tests.contract.test_scraper_contract import ScraperContractMixin
+from tests.helpers import response_from_fixture
 
 
 class TestNaefScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
@@ -25,8 +30,7 @@ class TestNaefScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
                 "price_chf": 455000,
                 "nb_rooms": 6.0,
                 "city": "Genève",
-                "external_url": "https://www.naef.ch/location/appartement/1202/"
-                "avenue-de-la-foret-5-geneve/261036.6001/",
+                "external_url": "https://www.naef.ch/location/appartement/1202/avenue-de-la-foret-5-geneve/261036.6001/",
             },
         )
 
@@ -42,6 +46,7 @@ class TestNaefScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
                 "title": "Place de parc intérieure",
                 "price_chf": 18000,
                 "city": "Genève",
+                "nb_rooms": None,
             },
         )
 
@@ -79,3 +84,26 @@ class TestNaefScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
                 "city": "Lausanne",
             },
         )
+
+    def test_naef_missing_required_field_is_a_value_error(self) -> None:
+        """No link, id or title is an invalid listing (ValueError), not a crash."""
+        payload = json.loads(response_from_fixture(self.fixture_name).text)
+        for key in ("link", "no_dossier", "intitule_plaquette"):
+            prop = {**payload["props"][0], key: None, "type_designation_fr": None}
+            node = Selector(text=json.dumps(prop))
+            with self.subTest(key=key), self.assertRaises(ValueError):
+                NaefScraper().parse_listing(node)
+
+    @patch("httpx.AsyncClient.get", new_callable=AsyncMock)
+    async def test_naef_invalid_prop_is_skipped(self, mock_get: AsyncMock) -> None:
+        """A prop Listing rejects is logged and skipped; the other props come out."""
+        payload = json.loads(response_from_fixture(self.fixture_name).text)
+        payload["props"][0]["link"] = "/location/relative/"
+        mock_get.return_value = MagicMock(text=json.dumps(payload))
+
+        with self.assertLogs("flatpulse.scrapers.base", "WARNING") as captured:
+            listings = await NaefScraper().fetch_listings()
+
+        self.assertEqual(len(listings), len(payload["props"]) - 1)
+        [warning] = captured.output
+        self.assertIn("external_url", warning)

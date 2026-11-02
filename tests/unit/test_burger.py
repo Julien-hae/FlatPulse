@@ -1,9 +1,12 @@
 """Unit tests for the Burger Immobilier scraper."""
 
+import re
 import unittest
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from parsel import Selector
+
+from flatpulse.common.models import Listing
 from flatpulse.scrapers.sources.burger import BurgerScraper
 from tests.contract.test_scraper_contract import ScraperContractMixin
 from tests.helpers import response_from_fixture
@@ -29,7 +32,7 @@ class TestBurgerScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
     scraper_class = BurgerScraper
     fixture_name = "burger_sitemap.xml"
 
-    async def fetch_from_fixture(self) -> list[dict[str, Any]]:
+    async def fetch_from_fixture(self) -> list[Listing]:
         """Serve the sitemap, then its rental fiches."""
         with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get:
             mock_get.side_effect = fake_get
@@ -120,14 +123,48 @@ class TestBurgerScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
             {"title": "Dépôt à louer", "price_chf": None, "surface_m2": 160.0},
         )
 
+    def test_burger_fiche_without_title_is_a_value_error(self) -> None:
+        """A missing <h1> is an invalid listing (ValueError), not an AttributeError."""
+        url = LOUER + "geneve-studio-meuble"
+        html = response_from_fixture("burger/geneve-studio-meuble.html").text
+        page = Selector(text=re.sub(r"<h1[^>]*>.*?</h1>", "", html, flags=re.S))
+
+        with self.assertRaisesRegex(ValueError, "title"):
+            BurgerScraper().parse_listing(page, url)
+
+    @patch("httpx.AsyncClient.get", new_callable=AsyncMock)
+    async def test_burger_invalid_fiche_is_skipped(self, mock_get: AsyncMock) -> None:
+        """A fiche Listing rejects is logged and skipped; the other fiches come out."""
+        studio = LOUER + "geneve-studio-meuble"
+
+        def get(url: str) -> MagicMock:
+            """Serve the studio fiche without its <h1>, the others unchanged."""
+            if url == studio:
+                html = response_from_fixture("burger/geneve-studio-meuble.html").text
+                return MagicMock(
+                    text=re.sub(r"<h1[^>]*>.*?</h1>", "", html, flags=re.S)
+                )
+            return fake_get(url)
+
+        mock_get.side_effect = get
+        expected = len(await self.fetch_from_fixture()) - 1
+
+        with self.assertLogs("flatpulse.scrapers.base", "WARNING") as captured:
+            listings = await BurgerScraper().fetch_listings()
+
+        self.assertEqual(len(listings), expected)
+        self.assertNotIn(studio, [listing.external_url for listing in listings])
+        [warning] = captured.output
+        self.assertIn(studio, warning)
+
     async def test_burger_shared_url_prefix_gives_two_listings(self) -> None:
         """Two fiches whose URLs share a prefix stay two listings."""
         listings = await self.fetch_from_fixture()
 
         ids = {
-            item["external_id"]
+            item.external_id
             for item in listings
-            if item["external_id"].startswith(MONT_BLANC)
+            if item.external_id.startswith(MONT_BLANC)
         }
 
         self.assertEqual(ids, {MONT_BLANC, MONT_BLANC + "-1017-000402"})
