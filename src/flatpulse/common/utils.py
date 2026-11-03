@@ -2,7 +2,38 @@
 
 import re
 
-from flatpulse.config import CANTON_TO_ABR
+_UNIT = r"(?:/|\bpar\b|\bpro\b)\s*"
+_PER_MONTH = re.compile(_UNIT + r"(?:mois|monat)\b", re.I)
+_PER_YEAR = re.compile(_UNIT + r"(?:an|année|jahr)\b|\bp\.\s?a\.", re.I)
+_PER_M2 = re.compile(_UNIT + r"m[²2]\b", re.I)
+CANTON_TO_ABR = {
+    "Zurich": "ZH",
+    "Berne": "BE",
+    "Lucerne": "LU",
+    "Uri": "UR",
+    "Schwytz": "SZ",
+    "Obwald": "OW",
+    "Nidwald": "NW",
+    "Glaris": "GL",
+    "Zoug": "ZG",
+    "Fribourg": "FR",
+    "Soleure": "SO",
+    "Bâle-Ville": "BS",
+    "Bâle-Campagne": "BL",
+    "Schaffhouse": "SH",
+    "Appenzell Rhodes-Extérieures": "AR",
+    "Appenzell Rhodes-Intérieures": "AI",
+    "Saint-Gall": "SG",
+    "Grisons": "GR",
+    "Argovie": "AG",
+    "Thurgovie": "TG",
+    "Tessin": "TI",
+    "Vaud": "VD",
+    "Valais": "VS",
+    "Neuchâtel": "NE",
+    "Genève": "GE",
+    "Jura": "JU",
+}
 
 
 def parse_swiss_price(text: str | None) -> int | None:
@@ -19,12 +50,6 @@ def parse_swiss_price(text: str | None) -> int | None:
     cents_text = match.group("cents")
     cents = int(cents_text.ljust(2, "0")) if cents_text else 0
     return francs * 100 + cents
-
-
-_UNIT = r"(?:/|\bpar\b|\bpro\b)\s*"
-_PER_MONTH = re.compile(_UNIT + r"(?:mois|monat)\b", re.I)
-_PER_YEAR = re.compile(_UNIT + r"(?:an|année|jahr)\b|\bp\.\s?a\.", re.I)
-_PER_M2 = re.compile(_UNIT + r"m[²2]\b", re.I)
 
 
 def parse_monthly_rent(text: str | None, surface_m2: float | None) -> int | None:
@@ -81,14 +106,14 @@ def parse_surface(text: str | None) -> float | None:
     """Format a Swiss surface string into a float representing the surface in square meters."""
     if text is None:
         return None
-    try:
-        return float(text)
-    except ValueError:
-        match = re.search(
-            r"(\d+(?:\.\d+)?)\s*(?:m²|m2|sqm|square meters?)",
-            text,
-            re.IGNORECASE,
-        )
-        if match:
-            return float(match.group(1))
+    bare = re.fullmatch(r"\s*(\d+(?:\.\d+)?)\s*", text)
+    if bare:
+        return float(bare.group(1))
+    match = re.search(
+        r"(\d+(?:\.\d+)?)\s*(?:m²|m2|sqm|square meters?)",
+        text,
+        re.IGNORECASE,
+    )
+    if match:
+        return float(match.group(1))
     return None

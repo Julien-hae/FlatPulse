@@ -1,6 +1,7 @@
 # SPIKE — Accès aux annonces des 13 régies
 
 > Généré depuis `notebooks/spike-agences.ipynb` le 22.09.2026 07:29 UTC.
+> Naef : volumes et mapping actualisés au 30.10.2026 (#116).
 > Aucune régie ne nécessite Playwright.
 
 Les volumes sont des **fiches distinctes**, pagination suivie et dédupliquée — pas des
@@ -15,7 +16,7 @@ fiches distinctes. À recalculer au prochain passage du notebook.
 
 | Régie | Statut | Accès | Pagination | Fiches | Genève | Scraper | Vérifié |
 |---|---|---|---|---|---|---|---|
-| Naef Immobilier | MVP phase 1 | `GET naef.ch/wp-admin/admin-ajax.php?action=get_all_props&type=Location` | aucune — tout le parc en un GET | 355 | 58 | **HttpScraper (JSON)** | HTTP 200 |
+| Naef Immobilier | MVP phase 1 | `GET naef.ch/wp-admin/admin-ajax.php?action=get_all_props&type=Location` | aucune — tout le parc en un GET | 963 | — | **HttpScraper (JSON)** | HTTP 200 |
 | Agence Immobilière Rodolphe Burger SA | MVP phase 1 | `GET www.burger-sa.ch/sitemap.php` + fiches | aucune — sitemap complet, `lastmod` par fiche | 27 | 27 | **HttpScraper** | HTTP 200 |
 | Comptoir Immobilier | MVP phase 1 | `GET comptoir-immo.ch/location/{appartement,maison}/Genève/?page=N` | ?page=N, 24 par page — tri antichronologique par défaut | 29 | 29 | **HttpScraper** | HTTP 200 |
 | Rosset & Cie | candidate phase 2 | `GET rosset.ch/api/properties?page=N` | ?page=N, 24 par page, totalPages dans la réponse | 165 | 105 | **HttpScraper (JSON)** | HTTP 200 |
@@ -38,8 +39,12 @@ fiches distinctes. À recalculer au prochain passage du notebook.
 - Pagination : aucune — tout le parc en un GET
 - Scraper : **HttpScraper (JSON)**
 - Débit : pas de Crawl-delay · poll 90-120s (leur cache tourne à 180s)
-- Volume : 355 fiches distinctes, dont 58 dans le canton de Genève — relevé le 22.09.2026 07:29 UTC
-- Flux : +0 depuis 22.09.2026 07:25
+- Volume : 963 annonces — relevé le 30.10.2026 (#116) : 309 appartements (`APP`),
+  389 parkings (`PARC`), 244 commerces (`LCO`) et 21 maisons (`MAI`).
+- Périmètre : **toute l'offre**, parkings et commerces compris, tous cantons
+  confondus. Le scraper étiquette les annonces sans les filtrer ; le filtrage vient en aval.
+- Localisation : NPA disponible sur les 963 annonces ; canton renseigné sur 726,
+  vide sur 237. Le nombre d'annonces genevoises n'est pas établi pour ce relevé.
 - Fixture : `tests/fixtures/naef_cases.json` (JSON) — 7 props du catalogue du 30.10.2026, une par piège
 
 ### Clés du payload JSON
@@ -50,18 +55,22 @@ fiches distinctes. À recalculer au prochain passage du notebook.
 | `external_url` | `link` |
 | `title` | `intitule_plaquette`, sinon `type_designation_fr` |
 | `price_chf` | `loyer_mensuel_brut` |
+| `charges_chf` | `loyer_mensuel_brut − loyer_mensuel_net`, en centimes si brut > net ; sinon `None` |
+| `property_type` | `type_code` : `APP` → `APARTMENT`, `MAI` → `HOUSE`, `PARC` → `PARKING`, `LCO` → `COMMERCIAL` |
 | `nb_rooms` | `nb_pieces` |
 | `surface_m2` | `surface_habitable` |
 | `city` | `adresse_localite` |
-| `canton` | `adresse_canton` |
+| `canton` | `adresse_canton` (nom complet → abréviation via `utils.canton_code` ; vide → `None`) |
 | `postal_code` | `npa` |
-| `images` | `imgs` |
+| `images` | `imgs` (liste ou valeurs d'un objet indexé, dans l'ordre du payload) |
 
 ### Pièges
 
 - L'URL /page-N/ renvoie le même shell vide : ne jamais paginer par URL.
 - /wp-json/naef/v1/api/properties-data répond 401 Invalid licence key — fausse piste.
 - loyer_sur_demande == 'oui' → price_chf = None, surtout pas 0.
+- `surface_habitable` contient un nombre nu (`"119"`, `"118.5"`) : accepté par
+  `parse_surface`, contrairement à `nan`, `inf` et à la notation scientifique.
 - `surface_habitable == 0` signifie une surface absente → `surface_m2 = None`,
   quel que soit le type de bien (parking, commerce ou dépôt notamment).
 - imgs arrive en liste OU en objet indexé : `imgs[*] || imgs.*` avec

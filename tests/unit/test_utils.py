@@ -71,6 +71,41 @@ class TestUtils(unittest.TestCase):
         self.assertEqual(parse_surface("118.5"), 118.5)
         self.assertEqual(parse_surface("59 m2"), 59.0)
 
+    def test_parse_surface_rejects_non_decimal_bare_numbers(self) -> None:
+        for text in (
+            "nan",
+            "NaN",
+            "inf",
+            "-inf",
+            "Infinity",
+            "1e3",
+            "1E+3",
+            "1_000",
+            "+119",
+            "-119",
+            ".5",
+            "119.",
+        ):
+            with self.subTest(text=text):
+                self.assertIsNone(parse_surface(text))
+
+    def test_parse_surface_preserves_supported_formats(self) -> None:
+        cases = {
+            " 119 ": 119.0,
+            "\t118.5\n": 118.5,
+            "59 m²": 59.0,
+            "ENV. 60 M2": 60.0,
+            "de 85 M2 à 100 M2": 85.0,
+            "59 sqm": 59.0,
+            "59 square meters": 59.0,
+            "": None,
+            "sur demande": None,
+            None: None,
+        }
+        for text, expected in cases.items():
+            with self.subTest(text=text):
+                self.assertEqual(parse_surface(text), expected)
+
     def test_canton_code(self) -> None:
         self.assertEqual(canton_code("Genève"), "GE")
         self.assertEqual(canton_code("Neuchâtel"), "NE")

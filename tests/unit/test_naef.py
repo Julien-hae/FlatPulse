@@ -7,7 +7,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from parsel import Selector
 
 from flatpulse.common.models import PropertyType
-from flatpulse.config import CANTON_TO_ABR
 from flatpulse.scrapers.sources.naef import NaefScraper
 from tests.contract.test_scraper_contract import ScraperContractMixin
 from tests.helpers import response_from_fixture
@@ -125,30 +124,31 @@ class TestNaefScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
         )
 
     async def test_naef_keeps_every_property_type(self) -> None:
-        """All property types are recognized."""
-        results = await self.fetch_from_fixture()
-        types = {item.property_type for item in results}
-        self.assertIn(PropertyType.APARTMENT, types)
-        self.assertIn(PropertyType.HOUSE, types)
-        self.assertIn(PropertyType.PARKING, types)
-        self.assertIn(PropertyType.COMMERCIAL, types)
+        """Parking, commercial premises and houses keep their exact property types."""
+        await self.assert_listing(
+            "201402.61105", {"property_type": PropertyType.PARKING}
+        )
+        await self.assert_listing(
+            "214177.1113", {"property_type": PropertyType.COMMERCIAL}
+        )
+        await self.assert_listing("CP.19643", {"property_type": PropertyType.HOUSE})
 
     async def test_naef_keeps_other_cantons(self) -> None:
-        """Cantons are valid."""
-        results = await self.fetch_from_fixture()
-        cantons = {item.canton for item in results}
-        test_values = set(CANTON_TO_ABR.values()) | {None}
-        for abbr in cantons:
-            self.assertIn(abbr, test_values)
+        """A Valais listing keeps the VS canton abbreviation."""
+        await self.assert_listing("CP.19643", {"canton": "VS"})
 
     async def test_naef_empty_canton_is_none_with_postal_code(self) -> None:
-        """Empty cantons have postal codes."""
+        """An empty source canton stays None while its postal code is retained."""
+        await self.assert_listing("276209.1", {"canton": None, "postal_code": "2300"})
+
+    async def test_naef_keeps_every_fixture_property(self) -> None:
+        """Every property in the fixture is returned exactly once."""
+        payload = json.loads(response_from_fixture(self.fixture_name).text)
         results = await self.fetch_from_fixture()
-        for item in results:
-            if not item.canton:
-                self.assertIsNotNone(item.postal_code)
-            if not item.postal_code:
-                self.assertIsNotNone(item.canton)
+        expected_ids = {prop["no_dossier"] for prop in payload["props"]}
+
+        self.assertEqual(len(results), len(payload["props"]))
+        self.assertEqual({listing.external_id for listing in results}, expected_ids)
 
     async def test_naef_zero_surface_is_none(self) -> None:
         """A zero surface is absent for parking, commercial and storage listings."""
