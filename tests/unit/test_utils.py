@@ -8,6 +8,7 @@ from unittest.mock import patch
 from flatpulse.common.models import PropertyType
 from flatpulse.common.utils import (
     canton_code,
+    is_monthly_rent,
     parse_floor,
     parse_monthly_rent,
     parse_property_type,
@@ -128,6 +129,7 @@ class TestUtils(unittest.TestCase):
             "au rez-supérieur": 0,
             "au 1er sous-sol": -1,
             "Bel appartement de 5 pièces": None,
+            "Studio au 3ème étage, cave au 1er sous-sol": 3,
         }
         for text, expected in cases.items():
             with self.subTest(text=text):
@@ -139,11 +141,31 @@ class TestUtils(unittest.TestCase):
             "Appartement 3.0 pièces": PropertyType.APARTMENT,
             "Garage individuel": PropertyType.PARKING,
             "Dépôt": PropertyType.STORAGE,
-            "Château": None,
+            "Parking": PropertyType.PARKING,
+            "Atelier": PropertyType.COMMERCIAL,
         }
         for text, expected in cases.items():
             with self.subTest(text=text):
                 self.assertEqual(parse_property_type(text), expected)
+
+    def test_unknown_property_type_is_logged(self) -> None:
+        """An unknown label gives None and a WARNING: the agency changed its labels."""
+        with self.assertLogs("flatpulse.common.utils", "WARNING") as logs:
+            self.assertIsNone(parse_property_type("Château"))
+        self.assertIn("Château", logs.output[0])
+
+    def test_is_monthly_rent(self) -> None:
+        """Only a rent without a yearly or per-m² unit is monthly."""
+        cases = {
+            "CHF 2'330.— / mois": True,
+            "Dès CHF 2'320.- + charges": True,
+            "CHF 24'000.— / année": False,
+            "CHF 260.— / m2 / année": False,
+            "CHF 25.- / m² / mois": False,
+        }
+        for text, expected in cases.items():
+            with self.subTest(text=text):
+                self.assertEqual(is_monthly_rent(text), expected)
 
     def test_config_missing_var_raises(self) -> None:
         """Test that missing required environment variables raise a SystemExit."""

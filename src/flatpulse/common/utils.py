@@ -26,6 +26,8 @@ _PROPERTY_TYPES = {
     "maison": PropertyType.HOUSE,
     "place ouverte": PropertyType.PARKING,
     "garage individuel": PropertyType.PARKING,
+    "parking": PropertyType.PARKING,
+    "atelier": PropertyType.COMMERCIAL,
     "arcade": PropertyType.COMMERCIAL,
     "bureau": PropertyType.COMMERCIAL,
     "commerce": PropertyType.COMMERCIAL,
@@ -168,5 +170,20 @@ def parse_property_type(text: str | None) -> PropertyType | None:
 
     « Appartement 3.0 pièces » is APARTMENT, « Dépôt » STORAGE, « Château » None.
     """
-    match = _PROPERTY_TYPE.match(text or "")
-    return _PROPERTY_TYPES[match[1].lower()] if match else None
+    if not text:
+        return None
+    match = _PROPERTY_TYPE.match(text)
+    if match is None:
+        logger.warning("Unknown property type label %r", text)
+        return None
+    return _PROPERTY_TYPES[match[1].lower()]
+
+
+def is_monthly_rent(text: str) -> bool:
+    """Whether a rent line is monthly: no yearly period (unless « / mois ») and no per-m² unit.
+
+    Agencies show charges without a unit; they can only be added to a monthly rent.
+    """
+    if _PER_M2.search(text):
+        return False
+    return not _PER_YEAR.search(text) or bool(_PER_MONTH.search(text))

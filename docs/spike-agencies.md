@@ -98,7 +98,7 @@ fiches distinctes. À recalculer au prochain passage du notebook.
 | titre | `h1::text` |
 | description | `div.prose` (texte) |
 | loyer net | `//div[text()='Loyer']/following-sibling::div/text()` |
-| charges | `//div[text()='Charges']/following-sibling::div/text()` ; ajoutées au loyer mensuel pour `price_chf`, conservées dans `charges_chf` |
+| charges | `//div[text()='Charges']/following-sibling::div/text()` ; affichées sans unité, donc ajoutées au loyer seulement s'il est mensuel (`price_chf`), et conservées dans `charges_chf` ; loyer annuel, au m² ou sur demande → `charges_chf = None` |
 | étage | dans `h1` : « N(er\|e\|ème) étage » = N, « rez-de-chaussée » / « rdc » = 0, « N(er\|e) sous-sol » = -N ; autres cas = `None` |
 | bloc de détails | `div.space-y-4.mt-6` — unique, absent des cartes « Ces biens pourraient vous intéresser » |
 | rue / NPA ville | dans ce bloc, `div.text-base::text` (deux lignes séparées par `<br>`) |
@@ -108,7 +108,7 @@ fiches distinctes. À recalculer au prochain passage du notebook.
 ### Pièges
 
 - Trois formats de prix : CHF 3'500.— / mois, CHF 2'320.- + charges, Dès CHF 2'320.- + charges. Tiret cadratin autant que tiret simple.
-- Les charges sont affichées séparément du loyer net : CHF 2'330.— + CHF 270.— donne `price_chf=260000`, `charges_chf=27000`. Sans loyer connu, le prix reste `None`, même si les charges sont connues.
+- Les charges sont affichées séparément du loyer net : CHF 2'330.— + CHF 270.— donne `price_chf=260000`, `charges_chf=27000`. Sans loyer connu, ou avec un loyer à l'année ou au m² (CHF 24.— de charges pour CHF 260.— / m2 / année, unité inconnue), `charges_chf = None`.
 - Loyers non mensuels sur les commerces (3 fiches sur 42 le 30.10.2026) : CHF 24'000.— / année (arcade), CHF 260.— / m2 / année (bureaux de 214 m²). `parse_monthly_rent` les ramène au mois : ÷ 12, et × surface pour un prix au m² ; sans surface, un prix au m² donne None, jamais un faux loyer.
 - Surface absente, en fourchette (de 85 M2 à 100 M2) ou préfixée (ENV. 60 M2).
 - Le slug peut mentir (35-pieces affiché 3.0 pièces) : faire foi au texte.

@@ -114,9 +114,9 @@ class TestBurgerScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
                 "surface_m2": 214.0,
                 "address": "Rue des Sablières 1-1bis-3",
                 "city": "Satigny",
-                "price_chf": 466067,
+                "price_chf": 463667,
                 "property_type": PropertyType.COMMERCIAL,
-                "charges_chf": 2400,
+                "charges_chf": None,
             },
         )
 
@@ -132,6 +132,18 @@ class TestBurgerScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
                 "city": "Le Lignon",
             },
         )
+
+    def test_burger_no_charges_without_rent(self) -> None:
+        """Charges are a share of price_chf: no rent, no charges either."""
+        url = LOUER + "geneve-appartement-de-3-pieces-au-2eme-etage"
+        html = response_from_fixture(
+            "burger/geneve-appartement-de-3-pieces-au-2eme-etage.html"
+        ).text.replace("CHF 2'330.— / mois", "Loyer sur demande")
+
+        listing = BurgerScraper().parse_listing(Selector(text=html), url)
+
+        self.assertIsNone(listing.price_chf)
+        self.assertIsNone(listing.charges_chf)
 
     async def test_burger_price_on_request_is_none(self) -> None:
         """« Loyer sur demande » gives no price, never 0."""

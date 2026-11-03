@@ -11,11 +11,13 @@ from parsel import Selector
 
 from flatpulse.common.models import Listing, PropertyType
 from flatpulse.common.utils import (
+    is_monthly_rent,
     parse_floor,
     parse_monthly_rent,
     parse_property_type,
     parse_rooms,
     parse_surface,
+    parse_swiss_price,
 )
 from flatpulse.scrapers.base import HttpScraper
 
@@ -77,9 +79,11 @@ class BurgerScraper(HttpScraper):
             details.css("div.text-sm").xpath("normalize-space()").getall(), url
         )
         rent = self._get_rent(node)
-        charges = self._get_charges(node)
         price_chf = parse_monthly_rent(rent, features.surface_m2)
-        charges_chf = parse_monthly_rent(charges, features.surface_m2) or None
+        # Charges carry no unit: they are only added to a known, monthly rent.
+        charges_chf = None
+        if price_chf is not None and rent is not None and is_monthly_rent(rent):
+            charges_chf = parse_swiss_price(self._get_charges(node)) or None
         if price_chf is not None and charges_chf is not None:
             price_chf += charges_chf
         title = self._get_title(node)
@@ -134,26 +138,14 @@ class BurgerScraper(HttpScraper):
                 return town
         return None
 
-    def _get_xpath(self, node: Selector, expr: str) -> str | None:
-        """Get first match of xpath."""
-        return node.xpath(expr).get()
-
     def _get_rent(self, node: Selector) -> str | None:
         """Get the rent."""
-        return self._get_xpath(
-            node, "//div[text()='Loyer']/following-sibling::div/text()"
-        )
+        return node.xpath("//div[text()='Loyer']/following-sibling::div/text()").get()
 
     def _get_charges(self, node: Selector) -> str | None:
         """Get the charges."""
-        return self._get_xpath(
-            node, "//div[text()='Charges']/following-sibling::div/text()"
-        )
+        return node.xpath("//div[text()='Charges']/following-sibling::div/text()").get()
 
     def _get_title(self, node: Selector) -> str:
         """Get the title."""
         return node.css("h1::text").get("")
-
-    def _get_address(self, node: Selector) -> str | None:
-        """Get the address."""
-        return node.css("div.text-base::text").get()
