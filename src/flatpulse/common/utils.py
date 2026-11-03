@@ -1,6 +1,45 @@
 """Utility functions for the FlatPulse application."""
 
+import logging
 import re
+
+logger = logging.getLogger(__name__)
+
+# A period or unit counts only when written as one, right after a slash or « par » /
+# « pro » (« / an », « par année », « / m² / an », « pro Jahr ») or as « p.a. »: a word
+# elsewhere in the line (« indexation annuelle ») must not divide a monthly rent by 12.
+_UNIT = r"(?:/|\bpar\b|\bpro\b)\s*"
+_PER_MONTH = re.compile(_UNIT + r"(?:mois|monat)\b", re.I)
+_PER_YEAR = re.compile(_UNIT + r"(?:an|année|jahr)\b|\bp\.\s?a\.", re.I)
+_PER_M2 = re.compile(_UNIT + r"m[²2]\b", re.I)
+CANTON_TO_ABR = {
+    "Zurich": "ZH",
+    "Berne": "BE",
+    "Lucerne": "LU",
+    "Uri": "UR",
+    "Schwytz": "SZ",
+    "Obwald": "OW",
+    "Nidwald": "NW",
+    "Glaris": "GL",
+    "Zoug": "ZG",
+    "Fribourg": "FR",
+    "Soleure": "SO",
+    "Bâle-Ville": "BS",
+    "Bâle-Campagne": "BL",
+    "Schaffhouse": "SH",
+    "Appenzell Rhodes-Extérieures": "AR",
+    "Appenzell Rhodes-Intérieures": "AI",
+    "Saint-Gall": "SG",
+    "Grisons": "GR",
+    "Argovie": "AG",
+    "Thurgovie": "TG",
+    "Tessin": "TI",
+    "Vaud": "VD",
+    "Valais": "VS",
+    "Neuchâtel": "NE",
+    "Genève": "GE",
+    "Jura": "JU",
+}
 
 
 def parse_swiss_price(text: str | None) -> int | None:
@@ -17,15 +56,6 @@ def parse_swiss_price(text: str | None) -> int | None:
     cents_text = match.group("cents")
     cents = int(cents_text.ljust(2, "0")) if cents_text else 0
     return francs * 100 + cents
-
-
-# A period or unit counts only when written as one, right after a slash or « par » /
-# « pro » (« / an », « par année », « / m² / an », « pro Jahr ») or as « p.a. »: a word
-# elsewhere in the line (« indexation annuelle ») must not divide a monthly rent by 12.
-_UNIT = r"(?:/|\bpar\b|\bpro\b)\s*"
-_PER_MONTH = re.compile(_UNIT + r"(?:mois|monat)\b", re.I)
-_PER_YEAR = re.compile(_UNIT + r"(?:an|année|jahr)\b|\bp\.\s?a\.", re.I)
-_PER_M2 = re.compile(_UNIT + r"m[²2]\b", re.I)
 
 
 def parse_monthly_rent(text: str | None, surface_m2: float | None) -> int | None:
@@ -71,10 +101,23 @@ def parse_rooms(text: str | None) -> float | None:
     return None
 
 
+def canton_code(canton: str | None) -> str | None:
+    """Return the Swiss abbreviation for a canton name, if it is recognized."""
+    if not canton:
+        return None
+    code = CANTON_TO_ABR.get(canton)
+    if code is None:
+        logger.warning("Unknown canton name %r", canton)
+    return code
+
+
 def parse_surface(text: str | None) -> float | None:
     """Format a Swiss surface string into a float representing the surface in square meters."""
     if text is None:
         return None
+    bare = re.fullmatch(r"\s*(\d+(?:\.\d+)?)\s*", text)
+    if bare:
+        return float(bare.group(1))
     match = re.search(
         r"(\d+(?:\.\d+)?)\s*(?:m²|m2|sqm|square meters?)",
         text,

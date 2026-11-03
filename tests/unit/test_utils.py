@@ -5,7 +5,13 @@ import unittest
 from typing import Any
 from unittest.mock import patch
 
-from flatpulse.common.utils import parse_monthly_rent, parse_rooms, parse_swiss_price
+from flatpulse.common.utils import (
+    canton_code,
+    parse_monthly_rent,
+    parse_rooms,
+    parse_surface,
+    parse_swiss_price,
+)
 from flatpulse.config import REQUIRED_VARS, Config
 
 
@@ -59,6 +65,55 @@ class TestUtils(unittest.TestCase):
     def test_parse_rooms(self) -> None:
         for test, expected in self.rooms_test_set.items():
             self.assertEqual(parse_rooms(test), expected, test)
+
+    def test_parse_surface_bare_number(self) -> None:
+        self.assertEqual(parse_surface("119"), 119.0)
+        self.assertEqual(parse_surface("118.5"), 118.5)
+        self.assertEqual(parse_surface("59 m2"), 59.0)
+
+    def test_parse_surface_rejects_non_decimal_bare_numbers(self) -> None:
+        for text in (
+            "nan",
+            "NaN",
+            "inf",
+            "-inf",
+            "Infinity",
+            "1e3",
+            "1E+3",
+            "1_000",
+            "+119",
+            "-119",
+            ".5",
+            "119.",
+        ):
+            with self.subTest(text=text):
+                self.assertIsNone(parse_surface(text))
+
+    def test_parse_surface_preserves_supported_formats(self) -> None:
+        cases = {
+            " 119 ": 119.0,
+            "\t118.5\n": 118.5,
+            "59 m²": 59.0,
+            "ENV. 60 M2": 60.0,
+            "de 85 M2 à 100 M2": 85.0,
+            "59 sqm": 59.0,
+            "59 square meters": 59.0,
+            "": None,
+            "sur demande": None,
+            None: None,
+        }
+        for text, expected in cases.items():
+            with self.subTest(text=text):
+                self.assertEqual(parse_surface(text), expected)
+
+    def test_canton_code(self) -> None:
+        self.assertEqual(canton_code("Genève"), "GE")
+        self.assertEqual(canton_code("Neuchâtel"), "NE")
+        self.assertIsNone(canton_code(""))
+        self.assertIsNone(canton_code(None))
+        with self.assertLogs("flatpulse.common.utils", "WARNING") as logs:
+            self.assertIsNone(canton_code("Atlantide"))
+        self.assertIn("Atlantide", logs.output[0])
 
     def test_config_missing_var_raises(self) -> None:
         """Test that missing required environment variables raise a SystemExit."""
