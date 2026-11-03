@@ -62,7 +62,11 @@ fiches distinctes. À recalculer au prochain passage du notebook.
 - L'URL /page-N/ renvoie le même shell vide : ne jamais paginer par URL.
 - /wp-json/naef/v1/api/properties-data répond 401 Invalid licence key — fausse piste.
 - loyer_sur_demande == 'oui' → price_chf = None, surtout pas 0.
-- imgs arrive en liste OU en objet indexé.
+- `surface_habitable == 0` signifie une surface absente → `surface_m2 = None`,
+  quel que soit le type de bien (parking, commerce ou dépôt notamment).
+- imgs arrive en liste OU en objet indexé : `imgs[*] || imgs.*` avec
+  `jmespath(...).getall()` extrait les URL dans l'ordre du payload (sans trier les
+  clés). Une valeur absente ou vide donne un tuple vide.
 - adresse_canton est le nom complet → utils.canton_code pour le VARCHAR(2).
 - Pas de rue dans le payload : slug du link ou fiche détail.
 

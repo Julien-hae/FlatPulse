@@ -5,7 +5,13 @@ import unittest
 from typing import Any
 from unittest.mock import patch
 
-from flatpulse.common.utils import parse_monthly_rent, parse_rooms, parse_swiss_price
+from flatpulse.common.utils import (
+    canton_code,
+    parse_monthly_rent,
+    parse_rooms,
+    parse_surface,
+    parse_swiss_price,
+)
 from flatpulse.config import REQUIRED_VARS, Config
 
 
@@ -59,6 +65,18 @@ class TestUtils(unittest.TestCase):
     def test_parse_rooms(self) -> None:
         for test, expected in self.rooms_test_set.items():
             self.assertEqual(parse_rooms(test), expected, test)
+
+    def test_parse_surface_bare_number(self) -> None:
+        self.assertEqual(parse_surface("119"), 119.0)
+        self.assertEqual(parse_surface("118.5"), 118.5)
+        self.assertEqual(parse_surface("59 m2"), 59.0)
+
+    def test_canton_code(self) -> None:
+        self.assertEqual(canton_code("Genève"), "GE")
+        self.assertEqual(canton_code("Neuchâtel"), "NE")
+        self.assertIsNone(canton_code(""))
+        self.assertIsNone(canton_code(None))
+        self.assertIsNone(canton_code("Atlantide"))
 
     def test_config_missing_var_raises(self) -> None:
         """Test that missing required environment variables raise a SystemExit."""

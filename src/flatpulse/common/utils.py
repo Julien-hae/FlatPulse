@@ -2,6 +2,8 @@
 
 import re
 
+from flatpulse.config import CANTON_TO_ABR
+
 
 def parse_swiss_price(text: str | None) -> int | None:
     """Format a Swiss price string into an integer representing the price in centimes."""
@@ -19,9 +21,6 @@ def parse_swiss_price(text: str | None) -> int | None:
     return francs * 100 + cents
 
 
-# A period or unit counts only when written as one, right after a slash or « par » /
-# « pro » (« / an », « par année », « / m² / an », « pro Jahr ») or as « p.a. »: a word
-# elsewhere in the line (« indexation annuelle ») must not divide a monthly rent by 12.
 _UNIT = r"(?:/|\bpar\b|\bpro\b)\s*"
 _PER_MONTH = re.compile(_UNIT + r"(?:mois|monat)\b", re.I)
 _PER_YEAR = re.compile(_UNIT + r"(?:an|année|jahr)\b|\bp\.\s?a\.", re.I)
@@ -71,15 +70,25 @@ def parse_rooms(text: str | None) -> float | None:
     return None
 
 
+def canton_code(canton: str | None) -> str | None:
+    """Return the Swiss abbreviation for a canton name, if it is recognized."""
+    if not canton:
+        return None
+    return CANTON_TO_ABR.get(canton)
+
+
 def parse_surface(text: str | None) -> float | None:
     """Format a Swiss surface string into a float representing the surface in square meters."""
     if text is None:
         return None
-    match = re.search(
-        r"(\d+(?:\.\d+)?)\s*(?:m²|m2|sqm|square meters?)",
-        text,
-        re.IGNORECASE,
-    )
-    if match:
-        return float(match.group(1))
+    try:
+        return float(text)
+    except ValueError:
+        match = re.search(
+            r"(\d+(?:\.\d+)?)\s*(?:m²|m2|sqm|square meters?)",
+            text,
+            re.IGNORECASE,
+        )
+        if match:
+            return float(match.group(1))
     return None
