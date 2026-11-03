@@ -1,15 +1,41 @@
 """Scraper for Burger Immobilier: the sitemap lists every fiche, each fiche is a listing."""
 
 import logging
+import re
 from functools import partial
+from typing import NamedTuple
 from urllib.parse import urljoin
 
 import httpx
 from parsel import Selector
 
-from flatpulse.common.models import Listing
-from flatpulse.common.utils import parse_monthly_rent, parse_rooms, parse_surface
+from flatpulse.common.models import Listing, PropertyType
+from flatpulse.common.utils import (
+    parse_floor,
+    parse_monthly_rent,
+    parse_property_type,
+    parse_rooms,
+    parse_surface,
+)
 from flatpulse.scrapers.base import HttpScraper
+
+logger = logging.getLogger(__name__)
+
+# The feature rows under the address: « Appartement 3.0 pièces », then « 59 m2 »,
+# « ENV. 60 M2 » or « de 85 M2 à 100 M2 » (lower bound kept).
+_TYPE_ROW = re.compile(r"(?P<label>\D+?)(?: (?P<rooms>\d+(?:\.\d+)?) pièces)?")
+_SURFACE_ROW = re.compile(
+    r"(?:env\. ?|de )?(?P<m2>\d+(?:\.\d+)?) m2(?: à \d+(?:\.\d+)? m2)?",
+    re.IGNORECASE,
+)
+
+
+class _Features(NamedTuple):
+    """What the feature rows of a fiche tell."""
+
+    property_type: PropertyType | None = None
+    nb_rooms: float | None = None
+    surface_m2: float | None = None
 
 
 class BurgerScraper(HttpScraper):
@@ -29,9 +55,7 @@ class BurgerScraper(HttpScraper):
                     fiche = await client.get(url)
                     fiche.raise_for_status()
                 except httpx.HTTPError as error:
-                    logging.getLogger(__name__).warning(
-                        "Fiche %s ignorée : %r", url, error
-                    )
+                    logger.warning("Fiche %s ignorée : %r", url, error)
                     continue
                 listing = self._parse_or_skip(
                     partial(self.parse_listing, Selector(text=fiche.text), url)
@@ -49,17 +73,26 @@ class BurgerScraper(HttpScraper):
         url = url or node.css("link[rel=canonical]::attr(href)").get("")
         details = node.css("div.space-y-4.mt-6")
         address = [line.strip() for line in details.css("div.text-base::text").getall()]
-        features = " ".join(details.css("div.text-sm::text").getall())
-        rent = node.xpath("//div[text()='Loyer']/following-sibling::div/text()").get()
-        surface = parse_surface(features)
-        price_chf = parse_monthly_rent(rent, surface)
+        features = self.features(
+            details.css("div.text-sm").xpath("normalize-space()").getall(), url
+        )
+        rent = self._get_rent(node)
+        charges = self._get_charges(node)
+        price_chf = parse_monthly_rent(rent, features.surface_m2)
+        charges_chf = parse_monthly_rent(charges, features.surface_m2) or None
+        if price_chf is not None and charges_chf is not None:
+            price_chf += charges_chf
+        title = self._get_title(node)
         return Listing(
             external_url=url,
             external_id=url,
-            title=node.css("h1::text").get(""),
+            title=title,
+            property_type=features.property_type,
             price_chf=price_chf,
-            nb_rooms=parse_rooms(features) or None,
-            surface_m2=surface,
+            charges_chf=charges_chf,
+            floor=parse_floor(title),
+            nb_rooms=features.nb_rooms,
+            surface_m2=features.surface_m2,
             address=address[0] if address else None,
             city=self.city(address),
             description=node.css("div.prose").xpath("normalize-space()").get() or None,
@@ -70,6 +103,29 @@ class BurgerScraper(HttpScraper):
         )
 
     @staticmethod
+    def features(rows: list[str], url: str) -> _Features:
+        """Type, rooms and surface, each read from a whole feature row of its grammar.
+
+        A row out of the known grammar is logged and ignored rather than guessed at:
+        it means Burger changed its fiches, and the scraper must be revisited.
+        « 0.0 pièces » means the number of rooms is unknown.
+        """
+        features = _Features()
+        for row in rows:
+            if (kind := _TYPE_ROW.fullmatch(row)) and (
+                property_type := parse_property_type(kind["label"])
+            ):
+                features = features._replace(
+                    property_type=property_type,
+                    nb_rooms=parse_rooms(kind["rooms"]) or None,
+                )
+            elif surface := _SURFACE_ROW.fullmatch(row):
+                features = features._replace(surface_m2=parse_surface(surface["m2"]))
+            else:
+                logger.warning("Fiche %s : ligne inconnue %r ignorée", url, row)
+        return features
+
+    @staticmethod
     def city(address: list[str]) -> str | None:
         """Town of the "NPA town" address line, e.g. "1204 Genève"; None without one."""
         for line in address[1:]:
@@ -77,3 +133,27 @@ class BurgerScraper(HttpScraper):
             if npa.isdigit() and town:
                 return town
         return None
+
+    def _get_xpath(self, node: Selector, expr: str) -> str | None:
+        """Get first match of xpath."""
+        return node.xpath(expr).get()
+
+    def _get_rent(self, node: Selector) -> str | None:
+        """Get the rent."""
+        return self._get_xpath(
+            node, "//div[text()='Loyer']/following-sibling::div/text()"
+        )
+
+    def _get_charges(self, node: Selector) -> str | None:
+        """Get the charges."""
+        return self._get_xpath(
+            node, "//div[text()='Charges']/following-sibling::div/text()"
+        )
+
+    def _get_title(self, node: Selector) -> str:
+        """Get the title."""
+        return node.css("h1::text").get("")
+
+    def _get_address(self, node: Selector) -> str | None:
+        """Get the address."""
+        return node.css("div.text-base::text").get()

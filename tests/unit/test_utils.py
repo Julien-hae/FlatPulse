@@ -5,9 +5,12 @@ import unittest
 from typing import Any
 from unittest.mock import patch
 
+from flatpulse.common.models import PropertyType
 from flatpulse.common.utils import (
     canton_code,
+    parse_floor,
     parse_monthly_rent,
+    parse_property_type,
     parse_rooms,
     parse_surface,
     parse_swiss_price,
@@ -114,6 +117,33 @@ class TestUtils(unittest.TestCase):
         with self.assertLogs("flatpulse.common.utils", "WARNING") as logs:
             self.assertIsNone(canton_code("Atlantide"))
         self.assertIn("Atlantide", logs.output[0])
+
+    def test_parse_floor(self) -> None:
+        """Numbered floors, ground floor as 0, basements below 0, None without one."""
+        cases = {
+            "au 2ème étage": 2,
+            "au 1er étage": 1,
+            "au 12ème étage": 12,
+            "au rez-de-chaussée": 0,
+            "au rez-supérieur": 0,
+            "au 1er sous-sol": -1,
+            "Bel appartement de 5 pièces": None,
+        }
+        for text, expected in cases.items():
+            with self.subTest(text=text):
+                self.assertEqual(parse_floor(text), expected)
+
+    def test_parse_property_type(self) -> None:
+        """The leading label gives the PropertyType; an unknown label gives None."""
+        cases = {
+            "Appartement 3.0 pièces": PropertyType.APARTMENT,
+            "Garage individuel": PropertyType.PARKING,
+            "Dépôt": PropertyType.STORAGE,
+            "Château": None,
+        }
+        for text, expected in cases.items():
+            with self.subTest(text=text):
+                self.assertEqual(parse_property_type(text), expected)
 
     def test_config_missing_var_raises(self) -> None:
         """Test that missing required environment variables raise a SystemExit."""

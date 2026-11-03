@@ -3,6 +3,8 @@
 import logging
 import re
 
+from flatpulse.common.models import PropertyType
+
 logger = logging.getLogger(__name__)
 
 # A period or unit counts only when written as one, right after a slash or « par » /
@@ -12,6 +14,24 @@ _UNIT = r"(?:/|\bpar\b|\bpro\b)\s*"
 _PER_MONTH = re.compile(_UNIT + r"(?:mois|monat)\b", re.I)
 _PER_YEAR = re.compile(_UNIT + r"(?:an|année|jahr)\b|\bp\.\s?a\.", re.I)
 _PER_M2 = re.compile(_UNIT + r"m[²2]\b", re.I)
+_ORDINAL = r"(?:er|e|ème|eme)?"
+_FLOOR = re.compile(
+    rf"\b(?:(?P<ground>rdc|rez)|(?P<basement>\d+){_ORDINAL} sous-sol"
+    rf"|(?P<floor>\d+){_ORDINAL} [ée]tage)\b",
+    re.IGNORECASE,
+)
+_PROPERTY_TYPES = {
+    "appartement": PropertyType.APARTMENT,
+    "studio": PropertyType.APARTMENT,
+    "maison": PropertyType.HOUSE,
+    "place ouverte": PropertyType.PARKING,
+    "garage individuel": PropertyType.PARKING,
+    "arcade": PropertyType.COMMERCIAL,
+    "bureau": PropertyType.COMMERCIAL,
+    "commerce": PropertyType.COMMERCIAL,
+    "dépôt": PropertyType.STORAGE,
+}
+_PROPERTY_TYPE = re.compile(rf"\s*({'|'.join(_PROPERTY_TYPES)})\b", re.IGNORECASE)
 CANTON_TO_ABR = {
     "Zurich": "ZH",
     "Berne": "BE",
@@ -126,3 +146,27 @@ def parse_surface(text: str | None) -> float | None:
     if match:
         return float(match.group(1))
     return None
+
+
+def parse_floor(text: str | None) -> int | None:
+    """Floor named in a French text, None when no floor is named.
+
+    « 2ème étage » is 2, « rez-de-chaussée » or « rez-supérieur » 0, « 1er sous-sol » -1.
+    """
+    match = _FLOOR.search(text or "")
+    if match is None:
+        return None
+    if match["ground"]:
+        return 0
+    if match["basement"]:
+        return -int(match["basement"])
+    return int(match["floor"])
+
+
+def parse_property_type(text: str | None) -> PropertyType | None:
+    """PropertyType of the label `text` starts with, None for an unknown label.
+
+    « Appartement 3.0 pièces » is APARTMENT, « Dépôt » STORAGE, « Château » None.
+    """
+    match = _PROPERTY_TYPE.match(text or "")
+    return _PROPERTY_TYPES[match[1].lower()] if match else None

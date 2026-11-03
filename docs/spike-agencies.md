@@ -97,15 +97,18 @@ fiches distinctes. À recalculer au prochain passage du notebook.
 | URL / id | l'URL `<loc>` du sitemap (repli : `link[rel=canonical]::attr(href)`) |
 | titre | `h1::text` |
 | description | `div.prose` (texte) |
-| prix | `//div[text()='Loyer']/following-sibling::div/text()` |
+| loyer net | `//div[text()='Loyer']/following-sibling::div/text()` |
+| charges | `//div[text()='Charges']/following-sibling::div/text()` ; ajoutées au loyer mensuel pour `price_chf`, conservées dans `charges_chf` |
+| étage | dans `h1` : « N(er\|e\|ème) étage » = N, « rez-de-chaussée » / « rdc » = 0, « N(er\|e) sous-sol » = -N ; autres cas = `None` |
 | bloc de détails | `div.space-y-4.mt-6` — unique, absent des cartes « Ces biens pourraient vous intéresser » |
 | rue / NPA ville | dans ce bloc, `div.text-base::text` (deux lignes séparées par `<br>`) |
-| type / pièces / surface | dans ce bloc, `div.text-sm::text` |
+| type / pièces / surface | dans ce bloc, chaque `div.text-sm` lu en entier contre sa grammaire : `<Type>[ <n> pièces]`, puis `[ENV. \| de ]<n> m2[ à <n> m2]` ; une ligne hors grammaire est loguée et ignorée |
 | images | `div.swiper-slide img::attr(data-src)`, relatives à `https://www.burger-sa.ch/` |
 
 ### Pièges
 
 - Trois formats de prix : CHF 3'500.— / mois, CHF 2'320.- + charges, Dès CHF 2'320.- + charges. Tiret cadratin autant que tiret simple.
+- Les charges sont affichées séparément du loyer net : CHF 2'330.— + CHF 270.— donne `price_chf=260000`, `charges_chf=27000`. Sans loyer connu, le prix reste `None`, même si les charges sont connues.
 - Loyers non mensuels sur les commerces (3 fiches sur 42 le 30.10.2026) : CHF 24'000.— / année (arcade), CHF 260.— / m2 / année (bureaux de 214 m²). `parse_monthly_rent` les ramène au mois : ÷ 12, et × surface pour un prix au m² ; sans surface, un prix au m² donne None, jamais un faux loyer.
 - Surface absente, en fourchette (de 85 M2 à 100 M2) ou préfixée (ENV. 60 M2).
 - Le slug peut mentir (35-pieces affiché 3.0 pièces) : faire foi au texte.
