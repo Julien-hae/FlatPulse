@@ -102,6 +102,29 @@ class TestNaefScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
         [warning] = captured.output
         self.assertIn("external_url", warning)
 
+    def test_naef_net_above_gross_has_no_charges(self) -> None:
+        """Charges exist only when gross > net: a reversed pair gives None, not abs()."""
+        payload = json.loads(response_from_fixture(self.fixture_name).text)
+        prop = next(p for p in payload["props"] if p["no_dossier"] == "261036.6001")
+        prop = {**prop, "loyer_mensuel_brut": 1800, "loyer_mensuel_net": 2000}
+
+        listing = NaefScraper().parse_listing(Selector(text=json.dumps(prop)))
+
+        self.assertIsNone(listing.charges_chf)
+
+    def test_naef_unknown_type_code_is_logged_with_its_id(self) -> None:
+        """A new Naef type code gives None and a WARNING naming the listing."""
+        payload = json.loads(response_from_fixture(self.fixture_name).text)
+        prop = next(p for p in payload["props"] if p["no_dossier"] == "261036.6001")
+        node = Selector(text=json.dumps({**prop, "type_code": "XYZ"}))
+
+        with self.assertLogs("flatpulse.scrapers.sources.naef", "WARNING") as logs:
+            listing = NaefScraper().parse_listing(node)
+
+        self.assertIsNone(listing.property_type)
+        self.assertIn("XYZ", logs.output[0])
+        self.assertIn("261036.6001", logs.output[0])
+
     async def test_naef_full_apartment_fields(self) -> None:
         """Full apartment fields are parsed correctly."""
         results = await self.fetch_from_fixture()

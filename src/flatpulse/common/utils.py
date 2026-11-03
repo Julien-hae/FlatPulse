@@ -1,7 +1,13 @@
 """Utility functions for the FlatPulse application."""
 
+import logging
 import re
 
+logger = logging.getLogger(__name__)
+
+# A period or unit counts only when written as one, right after a slash or « par » /
+# « pro » (« / an », « par année », « / m² / an », « pro Jahr ») or as « p.a. »: a word
+# elsewhere in the line (« indexation annuelle ») must not divide a monthly rent by 12.
 _UNIT = r"(?:/|\bpar\b|\bpro\b)\s*"
 _PER_MONTH = re.compile(_UNIT + r"(?:mois|monat)\b", re.I)
 _PER_YEAR = re.compile(_UNIT + r"(?:an|année|jahr)\b|\bp\.\s?a\.", re.I)
@@ -99,7 +105,10 @@ def canton_code(canton: str | None) -> str | None:
     """Return the Swiss abbreviation for a canton name, if it is recognized."""
     if not canton:
         return None
-    return CANTON_TO_ABR.get(canton)
+    code = CANTON_TO_ABR.get(canton)
+    if code is None:
+        logger.warning("Unknown canton name %r", canton)
+    return code
 
 
 def parse_surface(text: str | None) -> float | None:

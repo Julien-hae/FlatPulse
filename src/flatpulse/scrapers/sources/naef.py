@@ -72,16 +72,16 @@ class NaefScraper(HttpScraper):
         if not type_code:
             return None
         if type_code not in TYPE_CODE_TO_PROPERTY:
-            logger.warning("Unknown type code %s for node %s", type_code, node)
+            logger.warning(
+                "Unknown Naef type_code %r for %s",
+                type_code,
+                self._text(node, "no_dossier"),
+            )
         return TYPE_CODE_TO_PROPERTY.get(type_code)
 
     def _canton(self, node: Selector) -> str | None:
         """Return canton abbreviation."""
-        full_canton = self._text(node, "adresse_canton")
-        if not full_canton:
-            return None
-
-        return canton_code(full_canton)
+        return canton_code(self._text(node, "adresse_canton"))
 
     def _charges_chf(self, node: Selector) -> int | None:
         """Return charges in CHF."""
@@ -92,7 +92,7 @@ class NaefScraper(HttpScraper):
         if net is None or gross is None:
             return None
 
-        charges = abs(gross - net)
+        charges = gross - net
         return charges if charges > 0 else None
 
     def _surface_m2(self, node: Selector) -> float | None:

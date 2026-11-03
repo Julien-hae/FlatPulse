@@ -111,7 +111,9 @@ class TestUtils(unittest.TestCase):
         self.assertEqual(canton_code("Neuchâtel"), "NE")
         self.assertIsNone(canton_code(""))
         self.assertIsNone(canton_code(None))
-        self.assertIsNone(canton_code("Atlantide"))
+        with self.assertLogs("flatpulse.common.utils", "WARNING") as logs:
+            self.assertIsNone(canton_code("Atlantide"))
+        self.assertIn("Atlantide", logs.output[0])
 
     def test_config_missing_var_raises(self) -> None:
         """Test that missing required environment variables raise a SystemExit."""
