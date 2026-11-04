@@ -368,7 +368,7 @@ pièges) dans **`docs/spike-agencies.md`**. Aucune ne nécessite Playwright.
 |---|---|---|---|---|---|
 | Naef Immobilier | `naef` | **MVP** | `admin-ajax.php` JSON, tout le parc en 1 GET | 355 (58 GE) | poll 90-120 s |
 | Rodolphe Burger SA | `burger` | **MVP** | HTML, `?page=N`, 6/page | 32 (32 GE) | ~4 req/min |
-| Comptoir Immobilier | `comptoir` | **MVP** | HTML, `?page=N`, 24/page | 29 (29 GE) | Crawl-delay 10 → **6 rpm** |
+| Comptoir Immobilier | `comptoir` | **MVP** | HTML, `?page=N`, 24/page, puis une fiche par annonce | 375 (04.11.2026) | Crawl-delay 10 → **6 rpm** |
 | Rosset & Cie | `rosset` | phase 2 | API REST publique JSON | 165 (105 GE) | à mesurer |
 | Bory & Cie | `bory` | phase 2 | `__NEXT_DATA__`, curseur Relay | 20/28 | à mesurer |
 | Moser Vernet | `moservernet` | phase 2 | HTML, catalogue entier en 1 page (2,9 Mo) | 150 | **GET conditionnel obligatoire** |
@@ -628,18 +628,16 @@ d'implémenter les stories concernées.
    Cible : un `acquire(slug)` avant chaque requête, avec le `rate_limit_rpm` de la table
    `sources` → story #121, qui corrige aussi la rafale au démarrage
    du `TokenBucket` (capacité = `rpm`).
-10. **Comptoir : adresse et description absentes de la page liste.** Les cartes de
-    `comptoir-immo.ch/location/` ne donnent que « Commune, Canton » et aucune
-    description ; leur `data-property` est vide (`{"lat":"","lng":null,"price":null}`)
-    sur toutes les cartes, en ligne comme dans la fixture — ce n'est pas un défaut
-    d'extraction. La rue et la description ne sont que sur la fiche détail : par
-    exemple `.../vesenaz/belle-arcade-amnage/` donne « Route d'Hermance 4, Vésenaz »,
-    absent de la liste (vérifié le 30.10.2026). Le scraper renvoie donc
-    `address = "Vésenaz, Genève"` et `description = None`. À trancher : récupérer la
-    fiche détail coûte une requête par annonce au crawl-delay de 10 s (≈ 5 min pour
-    les 29 fiches genevoises du spike, au-delà de l'objectif d'alerte < 3 min), sauf à
-    ne récupérer que les fiches nouvelles. Si on le fait : nouvelle fixture de fiche
-    détail et mise à jour de `docs/spike-agencies.md`.
+10. **Comptoir : adresse et description absentes de la page liste.** *Tranché le
+    04.11.2026 : le scraper lit la fiche de chaque annonce.* Les cartes de
+    `comptoir-immo.ch/location/` ne donnent que « Commune, Canton », aucune description,
+    et pas toujours la surface ; leur `data-property` est vide. La fiche, elle, porte un
+    tableau « Détails » (type, adresse, loyer, charges, étage, pièces, surface) lu par
+    libellé. `ComptoirScraper` parcourt donc le catalogue pour les URL, puis télécharge
+    chaque fiche en attendant le Crawl-delay de 10 s avant chaque requête : un poll
+    complet dure ≈ 1 h (16 pages + 375 fiches au 04.11.2026), au-delà de l'objectif
+    d'alerte < 3 min pour cette source. #120 (fiche seulement pour les nouveautés) et
+    #121 (`acquire` par requête) restent la voie pour revenir sous cet objectif.
 11. **`dict` → `Listing` dans les stories aval.** #46, #51, #54 et #59 décrivent un
     `listing: dict` (dedup, enrichissement, matching, notification). Depuis #114, les
     scrapers produisent des `Listing` : lire ces stories avec `listing: Listing`, accès

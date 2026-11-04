@@ -120,33 +120,50 @@ fiches distinctes. À recalculer au prochain passage du notebook.
 
 ## Comptoir Immobilier (`comptoir`)
 
-- Accès : `GET comptoir-immo.ch/location/{appartement,maison}/Genève/?page=N`
-- Rendu : HTML statique, filtrage par le chemin de l'URL
+- Accès : `GET comptoir-immo.ch/location/?page=N` (toute l'offre, tous types et cantons), puis `GET` de chaque fiche détail
+- Rendu : HTML statique
 - Pagination : ?page=N, 24 par page — tri antichronologique par défaut
-- Scraper : **HttpScraper**
-- Débit : Crawl-delay: 10 → rate_limit_rpm = 6
+- Scraper : **HttpScraper** — la carte ne sert qu'à trouver l'URL de la fiche, tout le reste vient de la fiche
+- Débit : Crawl-delay: 10 → rate_limit_rpm = 6, attendu avant **chaque** requête (catalogue et fiches) : un poll complet dure ≈ 1 h (16 pages + 375 fiches au 04.11.2026)
 - Canal de repli : GET /?post_type=property_for_rent&feed=rss2 — 24 items, pubDate réelles. Le sitemap property_for_rent-*.xml est périmé (lastmod 2025-11)
-- Volume : 29 fiches distinctes, dont 29 dans le canton de Genève — relevé le 22.09.2026 07:29 UTC
+- Volume : 375 biens en location au 04.11.2026 (Genève, Vaud, Valais)
 - Flux : +0 depuis 22.09.2026 07:25
-- Fixture : `tests/fixtures/comptoir_cases.html` (HTML) — 7 cartes du catalogue du 30.10.2026, une par piège
+- Fixture : `tests/fixtures/comptoir_cases.html` — 9 cartes du catalogue, une par piège ; `tests/fixtures/comptoir/<slug>.html` — leurs 9 fiches du 04.11.2026 (contact anonymisé ; scripts, styles, SVG et srcset retirés)
 
-### Sélecteurs CSS
+### Sélecteurs de la fiche
 
-| Champ | Sélecteur |
+Le tableau « Détails » se lit **par libellé** : la valeur est la cellule qui suit le
+`<th>` (`//th[starts-with(normalize-space(), 'Surface')]/following-sibling::td[1]`).
+Une ligne absente → `None`.
+
+| Champ | Lecture |
 |---|---|
-| conteneur | `article.teaser--property_for_rent` |
-| lien | `article.teaser--property_for_rent a::attr(href)` |
-| image | `article.teaser--property_for_rent img::attr(src)` |
-| prix / pièces / surface / localité | `par motif sur le texte de la carte` |
+| lien de la fiche (catalogue) | `article.teaser--property_for_rent a:has(h2)::attr(href)` |
+| `external_url` | `link[rel=canonical]::attr(href)` ; `external_id` = son dernier segment |
+| `title` | `h1` |
+| `city`, `canton` | `h1 + h2` : `Yvorne, Vaud` → `Yvorne`, `canton_code("Vaud")` |
+| `price_chf` | `h1 ~ .heading-3` (`CHF 3'070.- / mois charges comprises`) → `parse_monthly_rent` |
+| `property_type` | `Type de bien` → `parse_property_type` (`Dépôt, Entrepôt` → STORAGE) |
+| `address` | `Adresse` (`Route de Lausanne 24 A, Yvorne`), avant la virgule |
+| `charges_chf` | `Charges`, seulement si `Loyer` est mensuel |
+| `nb_rooms` | `Pièces` (`5.5`) |
+| `surface_m2` | `Surface habitable` ou `Surface utile` (`165 m²`) |
+| `floor` | `Etage` (`7ème`, `1er`, `-1`, `Rez-de-chaussée`) |
+| `description` | `div.rich-text` |
+| `images` | `[data-gallery] img::attr(src)` — URL du proxy `external-images/?url=…`, telle quelle |
 
 ### Pièges
 
 - propertyId (Apimo) absent des annonces sans photo : external_id = chemin de la fiche.
-- Le titre contredit parfois la métadonnée : la ligne de métadonnées fait foi.
-- Surface tantôt collée à la métadonnée, tantôt sur sa propre ligne.
+- Le titre contredit parfois la métadonnée : le tableau « Détails » fait foi (« duplex en attique », `Etage` : `2ème`).
+- La carte n'affiche pas toujours la surface alors que la fiche la donne (`cabinet-bureau-remettre-au-centre-de-sion` : rien sur la carte, `Surface utile` 120 m² sur la fiche) : sans elle, un loyer au m² serait perdu.
+- Le libellé de surface varie : `Surface habitable` (logements), `Surface utile` (bureaux, arcades).
 - Prix sur demande → price_chf = None.
-- Loyers non mensuels (30.10.2026) : CHF 18'720.- / an (3 cartes sur 374) et CHF 600.- / m² / an (104 cartes, surtout des bureaux). `parse_monthly_rent` divise par 12 ; un prix au m² a besoin de la surface de la carte, extraite par #118 — d'ici là il donne None.
-- Canton écrit canton-de-geneve dans les fiches, Genève dans les filtres.
+- Loyers non mensuels (30.10.2026) : CHF 18'720.- / an (3 cartes sur 374) et CHF 600.- / m² / an (104 cartes, surtout des bureaux). `parse_monthly_rent` divise par 12 et multiplie par la surface de la fiche ; sans surface, None.
+- `Charges` n'a pas d'unité : annuelles quand le loyer est `/ an` (`CHF 6'720.-` à Monthey), au m² quand il est `/ m² / an`. Elles ne sont gardées que sur un loyer mensuel ; le prix de l'en-tête est déjà charges comprises.
+- Les fiches disparaissent vite : 2 des 7 cartes du 30.10.2026 renvoyaient « Page Not Found » le 04.11.2026.
+- Le HTML ferme les `<th>` par `</td>` : parsel (lxml) le répare, la lecture par libellé fonctionne.
+- Canton écrit canton-de-geneve dans les URL, Genève dans l'en-tête de la fiche.
 - Les liens SEO contextuels vivent dans la même grille que les cartes.
 
 # Candidates — phase 2
