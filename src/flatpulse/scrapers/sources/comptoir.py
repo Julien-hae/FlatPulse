@@ -1,23 +1,51 @@
-"""Scraper for Comptoir Immobilier, whose rental catalogue is paginated static HTML."""
+"""Scraper for Comptoir Immobilier: the catalogue lists the fiches, each fiche is a listing."""
 
+import asyncio
+import logging
 from functools import partial
 
 import httpx
-from parsel import Selector
+from parsel import Selector, SelectorList
 
 from flatpulse.common.models import Listing
-from flatpulse.common.utils import parse_monthly_rent, parse_rooms
+from flatpulse.common.utils import (
+    canton_code,
+    is_monthly_rent,
+    parse_floor,
+    parse_monthly_rent,
+    parse_property_type,
+    parse_rooms,
+    parse_surface,
+    parse_swiss_price,
+)
 from flatpulse.scrapers.base import HttpScraper
+
+logger = logging.getLogger(__name__)
 
 
 class ComptoirScraper(HttpScraper):
-    """Scrape rental listings from the Comptoir Immobilier catalogue."""
+    """Scrape every rental fiche of the Comptoir Immobilier catalogue."""
 
     base_url = "https://comptoir-immo.ch/location/"
-    rate_limit_seconds = 6
+    rate_limit_seconds = 10  # Crawl-delay of robots.txt, waited before every request
+
+    async def fetch_listings(self) -> list[Listing]:
+        """Walk the catalogue, then parse each fiche; skip failing or invalid ones."""
+        listings: list[Listing] = []
+        async with httpx.AsyncClient() as client:
+            for url in await self._fiche_urls(client):
+                try:
+                    fiche = await self._get(client, url)
+                except httpx.HTTPError as error:
+                    logger.warning("Fiche %s ignorée : %r", url, error)
+                    continue
+                listing = self._parse_or_skip(partial(self.parse_listing, fiche))
+                if listing is not None:
+                    listings.append(listing)
+        return listings
 
     def listing_nodes(self, page: Selector) -> list[Selector]:
-        """Return one node per property card on the page."""
+        """Return one node per property card on a catalogue page."""
         return list(page.css("article.teaser--property_for_rent"))
 
     @staticmethod
@@ -30,79 +58,68 @@ class ComptoirScraper(HttpScraper):
         ]
         return max(numbers, default=1)
 
-    async def fetch_listings(self) -> list[Listing]:
-        """Fetch every catalogue page and parse its cards, skipping invalid ones."""
-        listings: list[Listing] = []
-        async with httpx.AsyncClient() as client:
-            page_number, last_page = 1, 1
-            while page_number <= last_page:
-                response = await client.get(f"{self.base_url}?page={page_number}")
-                response.raise_for_status()
-                page = Selector(text=response.text)
-                if page_number == 1:
-                    last_page = self.nb_pages(page)
-                for node in self.listing_nodes(page):
-                    listing = self._parse_or_skip(partial(self.parse_listing, node))
-                    if listing is not None:
-                        listings.append(listing)
-                page_number += 1
-        return listings
-
     def parse_listing(self, node: Selector) -> Listing:
-        """Extract the listing fields from a property card."""
-        tags = [
-            tag.xpath("normalize-space()").get("")
-            for tag in node.css("div.inline-block")
-        ]
-        rooms = next((tag for tag in tags if "pièce" in tag.lower()), None)
+        """Extract the listing from a fiche, mostly from its « Détails » table."""
+        url = node.css("link[rel=canonical]::attr(href)").get("")
+        city, _, canton = (self._text(node.css("h1 + h2")) or "").partition(", ")
+        rent = self._detail(node, "Loyer")
+        # Charges carry no unit: they belong only to a monthly rent.
+        monthly = rent is not None and is_monthly_rent(rent)
+        charges = self._detail(node, "Charges") if monthly else None
+        surface_m2 = parse_surface(self._detail(node, "Surface"))
         return Listing(
-            title=self._get_title(node),
-            external_url=node.css("a:has(h2)::attr(href)").get(""),
-            price_chf=parse_monthly_rent(node.css("div.heading-4::text").get(), None),
-            nb_rooms=parse_rooms(rooms),
-            external_id=self._get_id(node),
-            address=self._get_location(node),
-            description=self._get_description(node),
+            external_url=url,
+            external_id=url.rstrip("/").rsplit("/", 1)[-1],
+            title=self._text(node.css("h1")) or "",
+            property_type=parse_property_type(self._detail(node, "Type de bien")),
+            price_chf=parse_monthly_rent(
+                self._text(node.css("h1 ~ .heading-3")), surface_m2
+            ),
+            charges_chf=parse_swiss_price(charges) or None,
+            nb_rooms=parse_rooms(self._detail(node, "Pièces")),
+            surface_m2=surface_m2,
+            floor=parse_floor(self._detail(node, "Etage")),
+            address=(self._detail(node, "Adresse") or "").partition(", ")[0] or None,
+            city=city or None,
+            canton=canton_code(canton),
+            description=self._text(node.css("div.rich-text")),
+            images=tuple(node.css("[data-gallery] img::attr(src)").getall()),
         )
 
-    def _get_title(self, node: Selector) -> str:
-        """Return the card heading, or 'type, location' when the <h2> is empty."""
-        title = node.css("h2").xpath("normalize-space()").get()
-        if title:
-            return title
-        return f"{self._get_type(node)}, {self._get_adress(node)}"
+    def _detail(self, node: Selector, label: str) -> str | None:
+        """Value after the « Détails » label starting with `label`, None without one.
 
-    def _get_id(self, node: Selector) -> str:
-        """Return the listing slug from the card URL (no reference on the list page)."""
-        url = node.css("a:has(h2)::attr(href)").get()
-        if not url:
-            raise ValueError("ID not found")
-        return url.rstrip("/").rsplit("/", 1)[-1]
-
-    def _get_description(self, node: Selector) -> str | None:
-        """Return the description text, None when the block is missing or empty."""
-        return node.css("div.rich-text").xpath("normalize-space()").get() or None
-
-    def _get_type(self, node: Selector) -> str:
-        """Return the property type, shown as the first tag of the card."""
-        property_type = node.css("div.inline-block").xpath("normalize-space()").get()
-        if not property_type:
-            raise ValueError(f"Property type is not defined: {self._card_url(node)}")
-        return property_type
+        « Surface » reads « Surface habitable » as well as « Surface utile ».
+        """
+        return self._text(
+            node.xpath(
+                "//th[starts-with(normalize-space(), $label)]/following-sibling::td[1]",
+                label=label,
+            )
+        )
 
     @staticmethod
-    def _get_location(node: Selector) -> str | None:
-        """Return the location line of the card ('Ville, Canton'), None without one."""
-        return node.css("div.opacity-80").xpath("normalize-space()").get() or None
+    def _text(nodes: SelectorList[Selector]) -> str | None:
+        """Whitespace-normalised text of the first node, None when absent or empty."""
+        return nodes.xpath("normalize-space()").get() or None
 
-    def _get_adress(self, node: Selector) -> str:
-        """Return the location line of the card, which the title fallback needs."""
-        address = self._get_location(node)
-        if not address:
-            raise ValueError(f"Address not found: {self._card_url(node)}")
-        return address
+    async def _fiche_urls(self, client: httpx.AsyncClient) -> list[str]:
+        """URLs of the fiches carded on every page of the catalogue."""
+        first = await self._get(client, f"{self.base_url}?page=1")
+        pages = [first] + [
+            await self._get(client, f"{self.base_url}?page={number}")
+            for number in range(2, self.nb_pages(first) + 1)
+        ]
+        return [
+            url
+            for page in pages
+            for node in self.listing_nodes(page)
+            if (url := node.css("a:has(h2)::attr(href)").get())
+        ]
 
-    @staticmethod
-    def _card_url(node: Selector) -> str | None:
-        """Return the card URL, used to name the faulty listing in error messages."""
-        return node.css("a:has(h2)::attr(href)").get()
+    async def _get(self, client: httpx.AsyncClient, url: str) -> Selector:
+        """GET `url` once the crawl-delay has passed, and parse it."""
+        await asyncio.sleep(self.rate_limit_seconds)
+        response = await client.get(url)
+        response.raise_for_status()
+        return Selector(text=response.text)

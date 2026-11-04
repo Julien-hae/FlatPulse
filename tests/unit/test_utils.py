@@ -135,6 +135,13 @@ class TestUtils(unittest.TestCase):
             with self.subTest(text=text):
                 self.assertEqual(parse_floor(text), expected)
 
+    def test_parse_floor_bare_value(self) -> None:
+        """A floor given alone, as in a details table: « 7ème », « 1er », « -1 »."""
+        cases = {"7ème": 7, "1er": 1, "-1": -1, "Rez-de-chaussée": 0, "Oui": None}
+        for text, expected in cases.items():
+            with self.subTest(text=text):
+                self.assertEqual(parse_floor(text), expected)
+
     def test_parse_property_type(self) -> None:
         """The leading label gives the PropertyType; an unknown label gives None."""
         cases = {

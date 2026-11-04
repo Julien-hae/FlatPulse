@@ -20,6 +20,7 @@ _FLOOR = re.compile(
     rf"|(?P<floor>\d+){_ORDINAL} [ée]tage)\b",
     re.IGNORECASE,
 )
+_BARE_FLOOR = re.compile(rf"\s*(-?\d+){_ORDINAL}\s*", re.IGNORECASE)
 _PROPERTY_TYPES = {
     "appartement": PropertyType.APARTMENT,
     "studio": PropertyType.APARTMENT,
@@ -154,7 +155,10 @@ def parse_floor(text: str | None) -> int | None:
     """Floor named in a French text, None when no floor is named.
 
     « 2ème étage » is 2, « rez-de-chaussée » or « rez-supérieur » 0, « 1er sous-sol » -1.
+    A floor given alone, as in a details table, counts too: « 7ème » is 7, « -1 » -1.
     """
+    if bare := _BARE_FLOOR.fullmatch(text or ""):
+        return int(bare[1])
     match = _FLOOR.search(text or "")
     if match is None:
         return None
