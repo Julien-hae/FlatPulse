@@ -4,7 +4,7 @@ import hashlib
 import unittest
 from collections.abc import Callable
 from dataclasses import replace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, call, patch
 
 from parsel import Selector
 
@@ -14,6 +14,7 @@ from flatpulse.scrapers.base import (
     AbstractScraper,
     HttpScraper,
 )
+from flatpulse.scrapers.rate_limiter import RateLimiter
 from tests.contract.test_scraper_contract import ScraperContractMixin
 from tests.helpers import response_from_fixture
 
@@ -22,6 +23,7 @@ class MinimalScraper(HttpScraper):
     """Smallest possible HttpScraper subclass, used only to exercise the base class."""
 
     base_url = "https://example.com/louer"
+    slug = "minimal"
 
     def listing_nodes(self, page: Selector) -> list[Selector]:
         return page.css("div.listing")
@@ -58,7 +60,9 @@ class TestMinimalScraperContract(
 class TestHttpScraper(unittest.IsolatedAsyncioTestCase):
     """Unit tests for the HttpScraper class."""
 
-    scraper = MinimalScraper()
+    def setUp(self) -> None:
+        """A fresh scraper per test, with a mocked limiter so nothing waits."""
+        self.scraper = MinimalScraper(rate_limiter=AsyncMock(spec=RateLimiter))
 
     @patch("httpx.AsyncClient.get", new_callable=AsyncMock)
     async def test_fetch_returns_listings_with_required_fields(
@@ -112,7 +116,7 @@ class TestHttpScraper(unittest.IsolatedAsyncioTestCase):
     ) -> None:
         """The pipeline never falls because of one link (CLAUDE.md): skip and log."""
         mock_get.return_value = response_from_fixture("sample_listing.html")
-        scraper = AlternatingInvalidScraper()
+        scraper = AlternatingInvalidScraper(rate_limiter=AsyncMock(spec=RateLimiter))
 
         with self.assertLogs("flatpulse.scrapers.base", level="WARNING") as captured:
             result = await scraper.fetch_listings()
@@ -121,6 +125,41 @@ class TestHttpScraper(unittest.IsolatedAsyncioTestCase):
         [warning] = captured.output
         self.assertIn("price_chf", warning)
         self.assertIn("https://example.com/annonces/102", warning)
+
+    async def test_run_does_not_sleep(self) -> None:
+        """run delegates to fetch_listings without a separate delay."""
+        scraper = MinimalScraper(rate_limiter=AsyncMock(spec=RateLimiter))
+        with (
+            patch.object(
+                scraper, "fetch_listings", new_callable=AsyncMock, return_value=[]
+            ) as fetch_listings,
+            patch("asyncio.sleep", new_callable=AsyncMock) as sleep,
+        ):
+            result = await scraper.run()
+
+        sleep.assert_not_awaited()
+        fetch_listings.assert_awaited_once_with()
+        self.assertEqual(result, [])
+
+    def test_scraper_requires_a_rate_limiter(self) -> None:
+        """No scraper without a rate: the limiter is a mandatory argument."""
+        with self.assertRaises(TypeError):
+            MinimalScraper()  # type: ignore[call-arg]
+
+    async def test_single_page_acquires_before_its_request(self) -> None:
+        """The single-page path (Naef) acquires a token before its only GET."""
+        limiter = AsyncMock(spec=RateLimiter)
+        manager = Mock()
+        with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get:
+            mock_get.return_value = response_from_fixture("sample_listing.html")
+            manager.attach_mock(limiter.acquire, "acquire")
+            manager.attach_mock(mock_get, "get")
+            await MinimalScraper(rate_limiter=limiter).fetch_listings()
+
+        requests = [c for c in manager.mock_calls if c[0] in ("acquire", "get")]
+        self.assertEqual(
+            requests, [call.acquire("minimal"), call.get(MinimalScraper.base_url)]
+        )
 
 
 class TestScraperContract(unittest.TestCase):

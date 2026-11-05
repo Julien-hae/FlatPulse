@@ -2,11 +2,12 @@
 
 import re
 import unittest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, Mock, call, patch
 
 from parsel import Selector
 
 from flatpulse.common.models import Listing, PropertyType
+from flatpulse.scrapers.rate_limiter import RateLimiter
 from flatpulse.scrapers.sources.burger import BurgerScraper
 from tests.contract.test_scraper_contract import ScraperContractMixin
 from tests.helpers import response_from_fixture
@@ -43,7 +44,7 @@ class TestBurgerScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
         """Serve the sitemap, then its rental fiches."""
         with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get:
             mock_get.side_effect = fake_get
-            return await self.scraper_class().fetch_listings()
+            return await self.new_scraper().fetch_listings()
 
     async def test_burger_apartment_fiche(self) -> None:
         """A complete Geneva apartment fiche comes out field by field."""
@@ -140,7 +141,7 @@ class TestBurgerScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
             "burger/geneve-appartement-de-3-pieces-au-2eme-etage.html"
         ).text.replace("CHF 2'330.— / mois", "Loyer sur demande")
 
-        listing = BurgerScraper().parse_listing(Selector(text=html), url)
+        listing = self.new_scraper().parse_listing(Selector(text=html), url)
 
         self.assertIsNone(listing.price_chf)
         self.assertIsNone(listing.charges_chf)
@@ -164,7 +165,7 @@ class TestBurgerScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
         page = Selector(text=re.sub(r"<h1[^>]*>.*?</h1>", "", html, flags=re.S))
 
         with self.assertRaisesRegex(ValueError, "title"):
-            BurgerScraper().parse_listing(page, url)
+            self.new_scraper().parse_listing(page, url)
 
     @patch("httpx.AsyncClient.get", new_callable=AsyncMock)
     async def test_burger_invalid_fiche_is_skipped(self, mock_get: AsyncMock) -> None:
@@ -184,7 +185,7 @@ class TestBurgerScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
         expected = len(await self.fetch_from_fixture()) - 1
 
         with self.assertLogs("flatpulse.scrapers.base", "WARNING") as captured:
-            listings = await BurgerScraper().fetch_listings()
+            listings = await self.new_scraper().fetch_listings()
 
         self.assertEqual(len(listings), expected)
         self.assertNotIn(studio, [listing.external_url for listing in listings])
@@ -210,7 +211,7 @@ class TestBurgerScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
         """The sale fiche of the sitemap is never requested."""
         mock_get.side_effect = fake_get
 
-        await BurgerScraper().fetch_listings()
+        await self.new_scraper().fetch_listings()
 
         requested = [call.args[0] for call in mock_get.call_args_list]
         self.assertNotIn(
@@ -236,7 +237,7 @@ class TestBurgerScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
         """An approximate surface keeps its value, a range keeps its lower bound."""
         for row, surface in {"ENV. 60 M2": 60.0, "de 85 M2 à 100 M2": 85.0}.items():
             with self.subTest(row=row):
-                listing = BurgerScraper().parse_listing(
+                listing = self.new_scraper().parse_listing(
                     apartment_with_surface_row(row), APARTMENT
                 )
                 self.assertEqual(listing.surface_m2, surface)
@@ -246,7 +247,7 @@ class TestBurgerScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
         page = apartment_with_surface_row("Balcon 12 m2 plein sud")
 
         with self.assertLogs("flatpulse.scrapers.sources.burger", "WARNING") as logs:
-            listing = BurgerScraper().parse_listing(page, APARTMENT)
+            listing = self.new_scraper().parse_listing(page, APARTMENT)
 
         self.assertIsNone(listing.surface_m2)
         self.assertEqual(listing.nb_rooms, 3.0)
@@ -276,3 +277,34 @@ class TestBurgerScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
                 "nb_rooms": None,
             },
         )
+
+    async def test_burger_acquires_before_sitemap_and_each_fiche(self) -> None:
+        """Await a token before the sitemap GET and each of the ten fiche GETs."""
+        limiter = AsyncMock(spec=RateLimiter)
+        scraper = BurgerScraper(rate_limiter=limiter)
+        manager = Mock()
+        urls = [
+            BurgerScraper.base_url,
+            APARTMENT,
+            LOUER + "geneve-appartement-de-3-pieces-au-rez-de-chaussee",
+            LOUER + "geneve-appartement-de-charme-et-de-prestige",
+            MONT_BLANC,
+            MONT_BLANC + "-1017-000402",
+            LOUER + "geneve-studio-meuble",
+            LOUER + "geneve-arcade-a-louer-en-plein-centre-ville",
+            LOUER + "le-lignon-parking-interne-au-1er-sous-sol",
+            LOUER + "satigny-bureaux-de-214-m2-a-satignybr",
+            LOUER + "veyrier-veyrierbr-depot-a-louer",
+        ]
+
+        with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get:
+            mock_get.side_effect = fake_get
+            manager.attach_mock(limiter.acquire, "acquire")
+            manager.attach_mock(mock_get, "get")
+            await scraper.fetch_listings()
+
+        expected_calls = []
+        for url in urls:
+            expected_calls.extend([call.acquire("burger"), call.get(url)])
+
+        self.assertEqual(manager.mock_calls, expected_calls)

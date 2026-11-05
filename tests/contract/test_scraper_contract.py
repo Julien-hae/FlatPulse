@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, patch
 
 from flatpulse.common.models import Listing
 from flatpulse.scrapers.base import HttpScraper
+from flatpulse.scrapers.rate_limiter import RateLimiter
 from tests.helpers import response_from_fixture
 
 
@@ -13,17 +14,22 @@ class ScraperContractMixin:
     """Contract tests shared by every scraper, and helpers for its named cases.
 
     Combine with `unittest.IsolatedAsyncioTestCase` and set `scraper_class` and
-    `fixture_name`; the scraper then runs against the frozen fixture, never the network.
+    `fixture_name`; the scraper then runs against the frozen fixture, never the network,
+    with a mocked limiter so the contracts never wait.
     """
 
     scraper_class: type[HttpScraper]
     fixture_name: str
 
+    def new_scraper(self) -> HttpScraper:
+        """A fresh scraper with its own mocked limiter."""
+        return self.scraper_class(rate_limiter=AsyncMock(spec=RateLimiter))
+
     async def fetch_from_fixture(self) -> list[Listing]:
         """Run a fresh scraper against the frozen fixture."""
         with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get:
             mock_get.return_value = response_from_fixture(self.fixture_name)
-            return await self.scraper_class().fetch_listings()
+            return await self.new_scraper().fetch_listings()
 
     async def assert_listing(
         self, external_id: str, expected: Mapping[str, object]
