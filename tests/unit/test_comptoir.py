@@ -1,11 +1,12 @@
 """Unit tests for the Comptoir Immobilier scraper."""
 
 import unittest
-from unittest.mock import AsyncMock, MagicMock, call, patch
+from unittest.mock import AsyncMock, MagicMock, Mock, call, patch
 
 import httpx
 
 from flatpulse.common.models import Listing, PropertyType
+from flatpulse.scrapers.rate_limiter import RateLimiter
 from flatpulse.scrapers.sources.comptoir import ComptoirScraper
 from tests.contract.test_scraper_contract import ScraperContractMixin
 from tests.helpers import response_from_fixture
@@ -33,7 +34,7 @@ class TestComptoirScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase
     `comptoir/` holds their nine fiches of 04.11.2026, contact anonymised.
     """
 
-    scraper_class = ComptoirScraper
+    scraper = ComptoirScraper(rate_limiter=AsyncMock(spec=RateLimiter))
     fixture_name = "comptoir_cases.html"
 
     async def fetch_from_fixture(self) -> list[Listing]:
@@ -43,7 +44,7 @@ class TestComptoirScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase
             patch("asyncio.sleep", new_callable=AsyncMock),
         ):
             mock_get.side_effect = fake_get
-            return await self.scraper_class().fetch_listings()
+            return await self.scraper.fetch_listings()
 
     async def test_comptoir_details_table(self) -> None:
         """A Geneva apartment comes out of its « Détails » table, field by field."""
@@ -169,22 +170,6 @@ class TestComptoirScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase
             },
         )
 
-    async def test_comptoir_waits_crawl_delay_before_each_request(self) -> None:
-        """Every request, catalogue or fiche, waits the 10 s Crawl-delay of robots.txt."""
-        manager = MagicMock()
-        with (
-            patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get,
-            patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep,
-        ):
-            mock_get.side_effect = fake_get
-            manager.attach_mock(mock_get, "get")
-            manager.attach_mock(mock_sleep, "sleep")
-            await self.scraper_class().fetch_listings()
-
-        names = [name for name, _, _ in manager.mock_calls]
-        self.assertEqual(names, ["sleep", "get"] * 10)
-        self.assertEqual(mock_sleep.await_args_list, [call(10)] * 10)
-
     async def test_comptoir_failing_fiche_is_skipped(self) -> None:
         """A fiche that fails to download is logged; the other fiches come out."""
         expected = len(await self.fetch_from_fixture()) - 1
@@ -200,7 +185,7 @@ class TestComptoirScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase
             self.assertLogs("flatpulse.scrapers.sources.comptoir", "WARNING"),
         ):
             mock_get.side_effect = get
-            listings = await self.scraper_class().fetch_listings()
+            listings = await self.scraper.fetch_listings()
 
         self.assertEqual(len(listings), expected)
 
@@ -220,6 +205,39 @@ class TestComptoirScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase
             self.assertLogs("flatpulse.scrapers.base", "WARNING"),
         ):
             mock_get.side_effect = get
-            listings = await self.scraper_class().fetch_listings()
+            listings = await self.scraper.fetch_listings()
 
         self.assertEqual(len(listings), expected)
+
+    async def test_comptoir_acquires_before_each_page(self) -> None:
+        """Each catalogue page acquires a token immediately before its GET."""
+        rate_limiter = AsyncMock(spec=RateLimiter)
+        scraper = ComptoirScraper(rate_limiter=rate_limiter)
+        manager = Mock()
+        with (
+            patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get,
+            patch("asyncio.sleep", new_callable=AsyncMock),
+        ):
+            mock_get.return_value = httpx.Response(
+                200,
+                request=httpx.Request("GET", ComptoirScraper.base_url),
+                text=(
+                    '<a class="page-number page-numbers">1</a>'
+                    '<a class="page-number page-numbers">3</a>'
+                ),
+            )
+            manager.attach_mock(rate_limiter.acquire, "acquire")
+            manager.attach_mock(mock_get, "get")
+            await scraper.fetch_listings()
+
+        self.assertEqual(
+            manager.mock_calls,
+            [
+                call.acquire("comptoir"),
+                call.get(f"{ComptoirScraper.base_url}?page=1"),
+                call.acquire("comptoir"),
+                call.get(f"{ComptoirScraper.base_url}?page=2"),
+                call.acquire("comptoir"),
+                call.get(f"{ComptoirScraper.base_url}?page=3"),
+            ],
+        )

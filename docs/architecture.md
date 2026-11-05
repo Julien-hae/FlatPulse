@@ -267,10 +267,13 @@ lui.
 **Fingerprint** (`Listing.fingerprint`) : `SHA-256(external_url + title +
 str(price_chf))`, 64 caractères hex, déterministe, inchangé par #114. Un changement de prix change le fingerprint → détection de baisse de prix.
 
-**`RateLimiter`** : un token bucket par `slug`, capacité = `rate_limit_rpm`, refill de
-`RPM/60` token par seconde, basé sur `time.monotonic()`. `acquire()` attend (async),
-`can_acquire()` teste sans consommer. Les sources sont indépendantes : saturer `naef` ne
-doit jamais bloquer `burger`. Un ban = une source perdue, c'est la protection centrale.
+**`RateLimiter`** : un token bucket par `slug`, capacité 1 et un jeton initial, refill de
+`RPM/60` token par seconde, basé sur `time.monotonic()`. `acquire()` attend (async) avant
+chaque requête HTTP ; deux requêtes successives sont donc espacées de `60 / RPM` secondes,
+sans rafale au démarrage. `can_acquire()` teste sans consommer. Les sources sont
+indépendantes : saturer `naef` ne doit jamais bloquer `burger`. Chaque `HttpScraper`
+reçoit un limiteur configuré avec le débit de sa source ; `run()` ne fait pas de pause
+séparée. Un ban = une source perdue, c'est la protection centrale.
 
 **`DeduplicationService`** : clé `source_slug:external_id`. `is_new()` (fingerprint
 jamais vu) et `has_changed()` (même source+id, fingerprint différent). Dict en mémoire
@@ -621,23 +624,24 @@ d'implémenter les stories concernées.
 8. **Redis.** Prévu dans le docker-compose (#63) et l'infra, mais le MVP fonctionne avec
    des dicts en mémoire (rate limiter, dedup, cache LLM). Ne le brancher que quand le
    multi-worker l'impose.
-9. **Débit des scrapers multi-requêtes.** Le `RateLimiter` (§5.1) n'est appelé par
-   aucun scraper : `run()` ne fait qu'une pause avant `fetch_listings()`. Un scraper qui
-   enchaîne plusieurs requêtes par poll (Burger : sitemap + une requête par fiche, 28 le
-   21.10.2026 ; Comptoir et Rosset : pages) n'est donc pas bridé requête par requête.
-   Cible : un `acquire(slug)` avant chaque requête, avec le `rate_limit_rpm` de la table
-   `sources` → story #121, qui corrige aussi la rafale au démarrage
-   du `TokenBucket` (capacité = `rpm`).
+9. **Débit des scrapers multi-requêtes.** *Tranché le 05.11.2026 (#121) :* chaque
+   requête HTTP doit attendre `RateLimiter.acquire(slug)`, avec le `rate_limit_rpm` de sa
+   source. Le bucket a une capacité de 1 et un jeton initial : à 6 rpm (Crawl-delay de
+   Comptoir), une requête peut partir immédiatement, puis les suivantes sont espacées de
+   10 s ; aucun burst n'est possible. Le rate limiting est géré par requête, pas par
+   `run()`, qui ne fait aucune pause globale. Cela s'applique au sitemap et à chaque fiche
+   Burger, ainsi qu'à chaque page et fiche Comptoir.
 10. **Comptoir : adresse et description absentes de la page liste.** *Tranché le
     04.11.2026 : le scraper lit la fiche de chaque annonce.* Les cartes de
     `comptoir-immo.ch/location/` ne donnent que « Commune, Canton », aucune description,
     et pas toujours la surface ; leur `data-property` est vide. La fiche, elle, porte un
     tableau « Détails » (type, adresse, loyer, charges, étage, pièces, surface) lu par
     libellé. `ComptoirScraper` parcourt donc le catalogue pour les URL, puis télécharge
-    chaque fiche en attendant le Crawl-delay de 10 s avant chaque requête : un poll
+    chaque fiche en respectant le Crawl-delay de 10 s avant chaque requête : un poll
     complet dure ≈ 1 h (16 pages + 375 fiches au 04.11.2026), au-delà de l'objectif
-    d'alerte < 3 min pour cette source. #120 (fiche seulement pour les nouveautés) et
-    #121 (`acquire` par requête) restent la voie pour revenir sous cet objectif.
+    d'alerte < 3 min pour cette source. #121 garantit le débit conforme mais ne raccourcit
+    pas ce poll ; ne télécharger que les fiches nouvelles (#120) est le levier pour en
+    réduire la durée.
 11. **`dict` → `Listing` dans les stories aval.** #46, #51, #54 et #59 décrivent un
     `listing: dict` (dedup, enrichissement, matching, notification). Depuis #114, les
     scrapers produisent des `Listing` : lire ces stories avec `listing: Listing`, accès

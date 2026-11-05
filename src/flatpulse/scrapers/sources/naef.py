@@ -29,6 +29,7 @@ class NaefScraper(HttpScraper):
     base_url = (
         "https://www.naef.ch/wp-admin/admin-ajax.php?action=get_all_props&type=Location"
     )
+    slug = "naef"
 
     def listing_nodes(self, page: Selector) -> list[Selector]:
         """Return one JSON node per property in the payload."""

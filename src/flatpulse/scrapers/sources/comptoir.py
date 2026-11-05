@@ -1,6 +1,5 @@
 """Scraper for Comptoir Immobilier: the catalogue lists the fiches, each fiche is a listing."""
 
-import asyncio
 import logging
 from functools import partial
 
@@ -27,7 +26,7 @@ class ComptoirScraper(HttpScraper):
     """Scrape every rental fiche of the Comptoir Immobilier catalogue."""
 
     base_url = "https://comptoir-immo.ch/location/"
-    rate_limit_seconds = 10  # Crawl-delay of robots.txt, waited before every request
+    slug = "comptoir"
 
     async def fetch_listings(self) -> list[Listing]:
         """Walk the catalogue, then parse each fiche; skip failing or invalid ones."""
@@ -119,7 +118,7 @@ class ComptoirScraper(HttpScraper):
 
     async def _get(self, client: httpx.AsyncClient, url: str) -> Selector:
         """GET `url` once the crawl-delay has passed, and parse it."""
-        await asyncio.sleep(self.rate_limit_seconds)
+        await self.rate_limiter.acquire(self.slug)
         response = await client.get(url)
         response.raise_for_status()
         return Selector(text=response.text)

@@ -14,6 +14,7 @@ from flatpulse.scrapers.base import (
     AbstractScraper,
     HttpScraper,
 )
+from flatpulse.scrapers.rate_limiter import RateLimiter
 from tests.contract.test_scraper_contract import ScraperContractMixin
 from tests.helpers import response_from_fixture
 
@@ -22,6 +23,7 @@ class MinimalScraper(HttpScraper):
     """Smallest possible HttpScraper subclass, used only to exercise the base class."""
 
     base_url = "https://example.com/louer"
+    slug = "minimal"
 
     def listing_nodes(self, page: Selector) -> list[Selector]:
         return page.css("div.listing")
@@ -121,6 +123,21 @@ class TestHttpScraper(unittest.IsolatedAsyncioTestCase):
         [warning] = captured.output
         self.assertIn("price_chf", warning)
         self.assertIn("https://example.com/annonces/102", warning)
+
+    async def test_run_does_not_sleep(self) -> None:
+        """run delegates to fetch_listings without a separate delay."""
+        scraper = MinimalScraper(rate_limiter=AsyncMock(spec=RateLimiter))
+        with (
+            patch.object(
+                scraper, "fetch_listings", new_callable=AsyncMock, return_value=[]
+            ) as fetch_listings,
+            patch("asyncio.sleep", new_callable=AsyncMock) as sleep,
+        ):
+            result = await scraper.run()
+
+        sleep.assert_not_awaited()
+        fetch_listings.assert_awaited_once_with()
+        self.assertEqual(result, [])
 
 
 class TestScraperContract(unittest.TestCase):

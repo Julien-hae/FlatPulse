@@ -5,9 +5,9 @@ import time
 
 
 class RateLimiter:
-    """Rate limiter that uses token buckets for each slug."""
+    """Rate limiter that spaces requests using one-token buckets for each slug."""
 
-    def __init__(self, rpm_by_slug: dict[str, int]):
+    def __init__(self, rpm_by_slug: dict[str, int]) -> None:
         """Initialize the rate limiter with the given rate limits by slug.
 
         Args:
@@ -36,7 +36,7 @@ class RateLimiter:
 
 
 class TokenBucket:
-    """Token bucket implementation for rate limiting."""
+    """One-token bucket enforcing a minimum interval of 60 / rpm seconds."""
 
     def __init__(self, rpm: int) -> None:
         """Initialize the token bucket with the given rate per minute.
@@ -46,9 +46,9 @@ class TokenBucket:
         """
         if rpm == 0:
             raise ValueError("Rate per minute (rpm) must be greater than 0.")
-        self._capacity = float(rpm)
+        self._capacity = 1.0
         self._rate = rpm / 60.0
-        self._tokens = float(rpm)
+        self._tokens = 1.0
         self._last = time.monotonic()
 
     def _refill(self) -> None:

@@ -3,6 +3,7 @@
 import os
 
 REQUIRED_VARS = ["DATABASE_URL", "TELEGRAM_BOT_TOKEN"]
+RPM_BY_SLUG = {"comptoir": 60, "burger": 60, "naef": 60, "minimal": 60}
 
 
 class Config:

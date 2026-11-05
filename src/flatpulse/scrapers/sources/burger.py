@@ -44,16 +44,19 @@ class BurgerScraper(HttpScraper):
     """Scrape every rental fiche listed in Burger's sitemap."""
 
     base_url = "https://www.burger-sa.ch/sitemap.php"
+    slug = "burger"
 
     async def fetch_listings(self) -> list[Listing]:
         """Download the sitemap, then each rental fiche; skip failing or invalid ones."""
         listings: list[Listing] = []
         async with httpx.AsyncClient() as client:
+            await self.rate_limiter.acquire(self.slug)
             sitemap = await client.get(self.base_url)
             sitemap.raise_for_status()
             for node in self.listing_nodes(Selector(text=sitemap.text)):
                 url = node.xpath("text()").get("")
                 try:
+                    await self.rate_limiter.acquire(self.slug)
                     fiche = await client.get(url)
                     fiche.raise_for_status()
                 except httpx.HTTPError as error:

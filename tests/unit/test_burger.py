@@ -2,11 +2,12 @@
 
 import re
 import unittest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, Mock, call, patch
 
 from parsel import Selector
 
 from flatpulse.common.models import Listing, PropertyType
+from flatpulse.scrapers.rate_limiter import RateLimiter
 from flatpulse.scrapers.sources.burger import BurgerScraper
 from tests.contract.test_scraper_contract import ScraperContractMixin
 from tests.helpers import response_from_fixture
@@ -36,14 +37,14 @@ class TestBurgerScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
     sitemap of 30.10.2026; `burger/` holds the ten rental fiches, contact anonymised.
     """
 
-    scraper_class = BurgerScraper
+    scraper = BurgerScraper(rate_limiter=AsyncMock(spec=RateLimiter))
     fixture_name = "burger_sitemap.xml"
 
     async def fetch_from_fixture(self) -> list[Listing]:
         """Serve the sitemap, then its rental fiches."""
         with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get:
             mock_get.side_effect = fake_get
-            return await self.scraper_class().fetch_listings()
+            return await self.scraper.fetch_listings()
 
     async def test_burger_apartment_fiche(self) -> None:
         """A complete Geneva apartment fiche comes out field by field."""
@@ -184,7 +185,9 @@ class TestBurgerScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
         expected = len(await self.fetch_from_fixture()) - 1
 
         with self.assertLogs("flatpulse.scrapers.base", "WARNING") as captured:
-            listings = await BurgerScraper().fetch_listings()
+            listings = await BurgerScraper(
+                rate_limiter=AsyncMock(spec=RateLimiter)
+            ).fetch_listings()
 
         self.assertEqual(len(listings), expected)
         self.assertNotIn(studio, [listing.external_url for listing in listings])
@@ -210,7 +213,7 @@ class TestBurgerScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
         """The sale fiche of the sitemap is never requested."""
         mock_get.side_effect = fake_get
 
-        await BurgerScraper().fetch_listings()
+        await BurgerScraper(rate_limiter=AsyncMock(spec=RateLimiter)).fetch_listings()
 
         requested = [call.args[0] for call in mock_get.call_args_list]
         self.assertNotIn(
@@ -276,3 +279,40 @@ class TestBurgerScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
                 "nb_rooms": None,
             },
         )
+
+    async def test_burger_acquires_before_sitemap_and_each_fiche(self) -> None:
+        """Await a token before the sitemap GET and each of the ten fiche GETs."""
+        limiter = AsyncMock(spec=RateLimiter)
+        limiter.acquire.return_value = None
+        scraper = BurgerScraper(rate_limiter=limiter)
+        manager = Mock()
+        urls = [
+            BurgerScraper.base_url,
+            APARTMENT,
+            LOUER + "geneve-appartement-de-3-pieces-au-rez-de-chaussee",
+            LOUER + "geneve-appartement-de-charme-et-de-prestige",
+            MONT_BLANC,
+            MONT_BLANC + "-1017-000402",
+            LOUER + "geneve-studio-meuble",
+            LOUER + "geneve-arcade-a-louer-en-plein-centre-ville",
+            LOUER + "le-lignon-parking-interne-au-1er-sous-sol",
+            LOUER + "satigny-bureaux-de-214-m2-a-satignybr",
+            LOUER + "veyrier-veyrierbr-depot-a-louer",
+        ]
+
+        with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get:
+
+            def get(url: str) -> MagicMock:
+                self.assertEqual(limiter.acquire.await_count, mock_get.call_count)
+                return fake_get(url)
+
+            mock_get.side_effect = get
+            manager.attach_mock(limiter.acquire, "acquire")
+            manager.attach_mock(mock_get, "get")
+            await scraper.fetch_listings()
+
+        expected_calls = []
+        for url in urls:
+            expected_calls.extend([call.acquire("burger"), call.get(url)])
+
+        self.assertEqual(manager.mock_calls, expected_calls)
