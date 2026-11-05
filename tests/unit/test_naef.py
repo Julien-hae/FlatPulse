@@ -86,7 +86,7 @@ class TestNaefScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
             prop = {**payload["props"][0], key: None, "type_designation_fr": None}
             node = Selector(text=json.dumps(prop))
             with self.subTest(key=key), self.assertRaises(ValueError):
-                NaefScraper().parse_listing(node)
+                self.new_scraper().parse_listing(node)
 
     @patch("httpx.AsyncClient.get", new_callable=AsyncMock)
     async def test_naef_invalid_prop_is_skipped(self, mock_get: AsyncMock) -> None:
@@ -96,7 +96,7 @@ class TestNaefScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
         mock_get.return_value = MagicMock(text=json.dumps(payload))
 
         with self.assertLogs("flatpulse.scrapers.base", "WARNING") as captured:
-            listings = await NaefScraper().fetch_listings()
+            listings = await self.new_scraper().fetch_listings()
 
         self.assertEqual(len(listings), len(payload["props"]) - 1)
         [warning] = captured.output
@@ -108,7 +108,7 @@ class TestNaefScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
         prop = next(p for p in payload["props"] if p["no_dossier"] == "261036.6001")
         prop = {**prop, "loyer_mensuel_brut": 1800, "loyer_mensuel_net": 2000}
 
-        listing = NaefScraper().parse_listing(Selector(text=json.dumps(prop)))
+        listing = self.new_scraper().parse_listing(Selector(text=json.dumps(prop)))
 
         self.assertIsNone(listing.charges_chf)
 
@@ -119,7 +119,7 @@ class TestNaefScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
         node = Selector(text=json.dumps({**prop, "type_code": "XYZ"}))
 
         with self.assertLogs("flatpulse.scrapers.sources.naef", "WARNING") as logs:
-            listing = NaefScraper().parse_listing(node)
+            listing = self.new_scraper().parse_listing(node)
 
         self.assertIsNone(listing.property_type)
         self.assertIn("XYZ", logs.output[0])

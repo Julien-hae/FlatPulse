@@ -9,7 +9,6 @@ import httpx
 from parsel import Selector
 
 from flatpulse.common.models import Listing
-from flatpulse.config import RPM_BY_SLUG
 from flatpulse.scrapers.rate_limiter import RateLimiter
 
 logger = logging.getLogger(__name__)
@@ -24,21 +23,19 @@ class AbstractScraper(ABC):
         raise NotImplementedError
 
     async def run(self) -> list[Listing]:
-        """Orchestrate a scrape: wait for the rate limit, then fetch listings."""
+        """Orchestrate a scrape; the pace is set request by request by the limiter."""
         return await self.fetch_listings()
 
 
 class HttpScraper(AbstractScraper):
     """Base class for HTTP scrapers."""
 
-    def __init__(self, rate_limiter: RateLimiter | None = None):
-        """Initialize with a rate limiter."""
-        self.rate_limiter = (
-            rate_limiter if rate_limiter else RateLimiter(rpm_by_slug=RPM_BY_SLUG)
-        )
-
     base_url: str
     slug: str
+
+    def __init__(self, rate_limiter: RateLimiter) -> None:
+        """Keep the limiter that paces every request of this source (`slug`)."""
+        self.rate_limiter = rate_limiter
 
     @abstractmethod
     def listing_nodes(self, page: Selector) -> list[Selector]:
@@ -50,11 +47,20 @@ class HttpScraper(AbstractScraper):
         """Parse a listing node into a Listing."""
         raise NotImplementedError
 
+    async def _get(self, client: httpx.AsyncClient, url: str) -> httpx.Response:
+        """GET `url` once the limiter grants this source a token; raise on HTTP error.
+
+        Every request of a scraper goes through here, so none escapes the limiter.
+        """
+        await self.rate_limiter.acquire(self.slug)
+        response = await client.get(url)
+        response.raise_for_status()
+        return response
+
     async def _get_html(self) -> str:
         """Fetch the HTML content of the base URL."""
         async with httpx.AsyncClient() as client:
-            response = await client.get(self.base_url)
-        response.raise_for_status()
+            response = await self._get(client, self.base_url)
         return response.text
 
     async def fetch_listings(self) -> list[Listing]:

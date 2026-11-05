@@ -272,8 +272,11 @@ str(price_chf))`, 64 caractères hex, déterministe, inchangé par #114. Un chan
 chaque requête HTTP ; deux requêtes successives sont donc espacées de `60 / RPM` secondes,
 sans rafale au démarrage. `can_acquire()` teste sans consommer. Les sources sont
 indépendantes : saturer `naef` ne doit jamais bloquer `burger`. Chaque `HttpScraper`
-reçoit un limiteur configuré avec le débit de sa source ; `run()` ne fait pas de pause
-séparée. Un ban = une source perdue, c'est la protection centrale.
+reçoit le limiteur à la construction (paramètre obligatoire, aucun débit par défaut) et
+toutes ses requêtes passent par `HttpScraper._get()`, qui appelle `acquire(slug)` avant
+le GET ; `run()` ne fait pas de pause séparée. Le pipeline (#64) construit le limiteur à
+partir de `SourceConfig.rate_limit_rpm`. Un ban = une source perdue, c'est la protection
+centrale.
 
 **`DeduplicationService`** : clé `source_slug:external_id`. `is_new()` (fingerprint
 jamais vu) et `has_changed()` (même source+id, fingerprint différent). Dict en mémoire
@@ -630,7 +633,11 @@ d'implémenter les stories concernées.
    Comptoir), une requête peut partir immédiatement, puis les suivantes sont espacées de
    10 s ; aucun burst n'est possible. Le rate limiting est géré par requête, pas par
    `run()`, qui ne fait aucune pause globale. Cela s'applique au sitemap et à chaque fiche
-   Burger, ainsi qu'à chaque page et fiche Comptoir.
+   Burger, à chaque page et fiche Comptoir, et à l'unique GET Naef : tout passe par
+   `HttpScraper._get()`. Conséquence : à 4 rpm, un poll Burger complet dure ≈ 11 min
+   (sitemap + 42 fiches au 30.10.2026), au-delà de l'objectif d'alerte < 3 min ; ne
+   télécharger que les fiches dont le `lastmod` du sitemap a changé est la piste, hors
+   #121.
 10. **Comptoir : adresse et description absentes de la page liste.** *Tranché le
     04.11.2026 : le scraper lit la fiche de chaque annonce.* Les cartes de
     `comptoir-immo.ch/location/` ne donnent que « Commune, Canton », aucune description,

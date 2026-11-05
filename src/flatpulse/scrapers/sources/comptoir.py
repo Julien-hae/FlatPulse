@@ -34,7 +34,7 @@ class ComptoirScraper(HttpScraper):
         async with httpx.AsyncClient() as client:
             for url in await self._fiche_urls(client):
                 try:
-                    fiche = await self._get(client, url)
+                    fiche = await self._get_page(client, url)
                 except httpx.HTTPError as error:
                     logger.warning("Fiche %s ignorée : %r", url, error)
                     continue
@@ -104,9 +104,9 @@ class ComptoirScraper(HttpScraper):
 
     async def _fiche_urls(self, client: httpx.AsyncClient) -> list[str]:
         """URLs of the fiches carded on every page of the catalogue."""
-        first = await self._get(client, f"{self.base_url}?page=1")
+        first = await self._get_page(client, f"{self.base_url}?page=1")
         pages = [first] + [
-            await self._get(client, f"{self.base_url}?page={number}")
+            await self._get_page(client, f"{self.base_url}?page={number}")
             for number in range(2, self.nb_pages(first) + 1)
         ]
         return [
@@ -116,9 +116,6 @@ class ComptoirScraper(HttpScraper):
             if (url := node.css("a:has(h2)::attr(href)").get())
         ]
 
-    async def _get(self, client: httpx.AsyncClient, url: str) -> Selector:
-        """GET `url` once the crawl-delay has passed, and parse it."""
-        await self.rate_limiter.acquire(self.slug)
-        response = await client.get(url)
-        response.raise_for_status()
-        return Selector(text=response.text)
+    async def _get_page(self, client: httpx.AsyncClient, url: str) -> Selector:
+        """GET `url` through the limiter (Crawl-delay of 10 s), and parse it."""
+        return Selector(text=(await self._get(client, url)).text)

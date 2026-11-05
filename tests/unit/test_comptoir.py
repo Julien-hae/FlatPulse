@@ -34,17 +34,16 @@ class TestComptoirScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase
     `comptoir/` holds their nine fiches of 04.11.2026, contact anonymised.
     """
 
-    scraper = ComptoirScraper(rate_limiter=AsyncMock(spec=RateLimiter))
+    scraper_class = ComptoirScraper
     fixture_name = "comptoir_cases.html"
 
     async def fetch_from_fixture(self) -> list[Listing]:
         """Serve the catalogue, then its fiches, without waiting the crawl-delay."""
         with (
             patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get,
-            patch("asyncio.sleep", new_callable=AsyncMock),
         ):
             mock_get.side_effect = fake_get
-            return await self.scraper.fetch_listings()
+            return await self.new_scraper().fetch_listings()
 
     async def test_comptoir_details_table(self) -> None:
         """A Geneva apartment comes out of its « Détails » table, field by field."""
@@ -181,11 +180,10 @@ class TestComptoirScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase
 
         with (
             patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get,
-            patch("asyncio.sleep", new_callable=AsyncMock),
             self.assertLogs("flatpulse.scrapers.sources.comptoir", "WARNING"),
         ):
             mock_get.side_effect = get
-            listings = await self.scraper.fetch_listings()
+            listings = await self.new_scraper().fetch_listings()
 
         self.assertEqual(len(listings), expected)
 
@@ -201,11 +199,10 @@ class TestComptoirScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase
 
         with (
             patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get,
-            patch("asyncio.sleep", new_callable=AsyncMock),
             self.assertLogs("flatpulse.scrapers.base", "WARNING"),
         ):
             mock_get.side_effect = get
-            listings = await self.scraper.fetch_listings()
+            listings = await self.new_scraper().fetch_listings()
 
         self.assertEqual(len(listings), expected)
 
@@ -216,7 +213,6 @@ class TestComptoirScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase
         manager = Mock()
         with (
             patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get,
-            patch("asyncio.sleep", new_callable=AsyncMock),
         ):
             mock_get.return_value = httpx.Response(
                 200,
