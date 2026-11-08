@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from flatpulse.common.logging_configuration import log_level_name
 from flatpulse.config import REQUIRED_VARS, Config
 
 # The required variables, set: the only environment a test starts from.
@@ -29,6 +30,32 @@ class TestConfig(unittest.TestCase):
             config = Config()
 
         self.assertEqual(config.log_level, "DEBUG")
+
+    def test_config_unknown_log_level_raises(self) -> None:
+        """A LOG_LEVEL logging does not know stops the process, naming the variable.
+
+        configure_logger() only falls back to INFO with a warning, at import time.
+        """
+        env = {**REQUIRED_ENV, "LOG_LEVEL": "VERBOSE"}
+        with (
+            patch.dict(os.environ, env, clear=True),
+            self.assertRaises(SystemExit) as raised,
+        ):
+            Config()
+        self.assertIn("LOG_LEVEL", str(raised.exception))
+        self.assertIn("'VERBOSE'", str(raised.exception))
+
+    def test_config_log_level_is_the_logger_level(self) -> None:
+        """Config and configure_logger read LOG_LEVEL through one function: same value."""
+        for value, expected in {"WARNING": "WARNING", "": "INFO"}.items():
+            with (
+                self.subTest(value=value),
+                patch.dict(
+                    os.environ, {**REQUIRED_ENV, "LOG_LEVEL": value}, clear=True
+                ),
+            ):
+                self.assertEqual(Config().log_level, expected)
+                self.assertEqual(log_level_name(), expected)
 
     def test_config_poll_interval_from_env(self) -> None:
         """POLL_INTERVAL_DEFAULT set: its value; set but empty: the default, as if unset."""

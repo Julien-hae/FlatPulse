@@ -93,106 +93,24 @@ story au format `type(scope): description`, issue fermée avec un résumé.
 
 ## 4. Modèle de données
 
-Six tables, définies dans `sql/schema.sql` (#62) : `sources`, `listings`, `users`,
-`search_profiles`, `notifications`, et la table de référence `postal_codes` (NPA →
-canton, §6.1).
+Six tables. **Le DDL fait foi : `sql/schema.sql` (#62)**, il n'est pas recopié ici pour
+ne pas diverger.
 
-```sql
-CREATE TABLE sources (
-    id              SERIAL PRIMARY KEY,
-    name            VARCHAR(100) NOT NULL,
-    slug            VARCHAR(50) UNIQUE NOT NULL,
-    base_url        TEXT NOT NULL,
-    scraper_class   VARCHAR(100) NOT NULL,
-    poll_interval_s INT NOT NULL DEFAULT 120,
-    rate_limit_rpm  INT NOT NULL DEFAULT 10,
-    is_active       BOOLEAN DEFAULT TRUE,
-    config          JSONB DEFAULT '{}',
-    last_scraped_at TIMESTAMPTZ,
-    created_at      TIMESTAMPTZ DEFAULT NOW()
-);
+| Table | Une ligne par | À retenir |
+|---|---|---|
+| `sources` | régie scrapée | `poll_interval_s` et `rate_limit_rpm` propres à la source |
+| `listings` | annonce, unique sur `(source_id, external_id)` | montants en centimes (§4.1), `fingerprint` pour le dedup |
+| `users` | abonné, identifié par `telegram_id` ou `email` | `plan` porte l'offre (§4.2) |
+| `search_profiles` | jeu de critères d'un abonné | les hard filters du matching (§5.3) |
+| `notifications` | alerte envoyée | jamais deux fois la même annonce sur le même canal |
+| `postal_codes` | (NPA, localité) | table de référence NPA → canton (§6.1) |
 
-CREATE TABLE listings (
-    id              SERIAL PRIMARY KEY,
-    source_id       INT NOT NULL REFERENCES sources(id),
-    external_id     VARCHAR(255) NOT NULL,
-    external_url    TEXT NOT NULL,
-    fingerprint     VARCHAR(64) NOT NULL,
-
-    title           TEXT NOT NULL,
-    description     TEXT,
-    property_type   VARCHAR(20),       -- apartment, house, parking, commercial, storage
-    price_chf       INT,               -- EN CENTIMES (cf. §4.1), loyer mensuel charges comprises
-    charges_chf     INT,               -- EN CENTIMES, part des charges dans price_chf
-    nb_rooms        DECIMAL(3,1),
-    surface_m2      DECIMAL(7,2),      -- 45.5 m² reste 45.5, comme Listing.surface_m2
-    floor           INT,
-    address         TEXT,
-    city            VARCHAR(100),
-    canton          VARCHAR(2),
-    postal_code     VARCHAR(10),
-    listing_type    VARCHAR(10) DEFAULT 'rent',
-
-    enriched        JSONB DEFAULT '{}',
-    images          TEXT[] DEFAULT '{}',
-
-    first_seen_at   TIMESTAMPTZ DEFAULT NOW(),
-    is_active       BOOLEAN DEFAULT TRUE,
-
-    UNIQUE(source_id, external_id)
-);
-
-CREATE INDEX idx_listings_fingerprint ON listings(fingerprint);
-CREATE INDEX idx_listings_search ON listings(is_active, city, nb_rooms, price_chf);
-CREATE INDEX idx_listings_enriched ON listings USING GIN(enriched);
-
-CREATE TABLE users (
-    id          SERIAL PRIMARY KEY,
-    email       VARCHAR(255) UNIQUE,
-    telegram_id BIGINT UNIQUE,
-    lang        VARCHAR(2) DEFAULT 'fr',
-    plan        VARCHAR(20) DEFAULT 'free',
-    is_active   BOOLEAN DEFAULT TRUE,
-    created_at  TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE TABLE search_profiles (
-    id                 SERIAL PRIMARY KEY,
-    user_id            INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    name               VARCHAR(100),
-    listing_type       VARCHAR(10) DEFAULT 'rent',
-    cities             TEXT[],
-    cantons            VARCHAR(2)[],
-    min_rooms          DECIMAL(3,1),
-    max_rooms          DECIMAL(3,1),
-    min_price          INT,            -- EN CENTIMES
-    max_price          INT,            -- EN CENTIMES
-    min_surface        INT,
-    required_amenities TEXT[],
-    pets_required      BOOLEAN DEFAULT FALSE,
-    custom_criteria    TEXT,
-    is_active          BOOLEAN DEFAULT TRUE,
-    created_at         TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE TABLE notifications (
-    id          SERIAL PRIMARY KEY,
-    user_id     INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    listing_id  INT NOT NULL REFERENCES listings(id),
-    profile_id  INT NOT NULL REFERENCES search_profiles(id) ON DELETE CASCADE,
-    channel     VARCHAR(20) NOT NULL,
-    match_score DECIMAL(5,2) NOT NULL,
-    sent_at     TIMESTAMPTZ DEFAULT NOW(),
-    UNIQUE(user_id, listing_id, channel)
-);
-
-CREATE TABLE postal_codes (
-    postal_code  VARCHAR(4)  NOT NULL,
-    locality     TEXT        NOT NULL,
-    canton       VARCHAR(2)  NOT NULL,
-    PRIMARY KEY (postal_code, locality)
-);
-```
+La base refuse ce que `Listing` refuse : prix, charges, pièces et surface strictement
+positifs (absent = `NULL`, jamais `0`), canton en deux majuscules, `property_type` parmi
+les valeurs de `PropertyType`. La surface est un `DECIMAL` (45.5 m² reste 45.5), les
+booléens sont `NOT NULL`, et supprimer un abonné supprime ses profils et ses
+notifications (`ON DELETE CASCADE`). L'index de recherche est partiel (`WHERE
+is_active`) sur `canton, property_type, price_chf`.
 
 ### 4.1 Les montants sont en centimes
 

@@ -2,6 +2,10 @@
 --
 -- Les montants (price_chf, charges_chf, min_price, max_price) sont en CENTIMES :
 -- CHF 1'850.– → 185000 (§4.1). Un prix sur demande est NULL, jamais 0.
+--
+-- Les CHECK reprennent ce que Listing (flatpulse.common.models) refuse : un autre
+-- écrivain que le pipeline (rafraîchissement, correction à la main) ne peut pas
+-- glisser un prix à 0 ou un canton en toutes lettres.
 
 CREATE TABLE sources (
     id              SERIAL PRIMARY KEY,
@@ -11,7 +15,7 @@ CREATE TABLE sources (
     scraper_class   VARCHAR(100) NOT NULL,
     poll_interval_s INT NOT NULL DEFAULT 120,
     rate_limit_rpm  INT NOT NULL DEFAULT 10,
-    is_active       BOOLEAN DEFAULT TRUE,
+    is_active       BOOLEAN NOT NULL DEFAULT TRUE,
     config          JSONB DEFAULT '{}',
     last_scraped_at TIMESTAMPTZ,
     created_at      TIMESTAMPTZ DEFAULT NOW()
@@ -26,15 +30,16 @@ CREATE TABLE listings (
 
     title           TEXT NOT NULL,
     description     TEXT,
-    property_type   VARCHAR(20),       -- apartment, house, parking, commercial, storage
-    price_chf       INT,               -- EN CENTIMES, loyer mensuel charges comprises
-    charges_chf     INT,               -- EN CENTIMES, part des charges dans price_chf
-    nb_rooms        DECIMAL(3,1),
-    surface_m2      DECIMAL(7,2),      -- 45.5 m² reste 45.5, comme Listing.surface_m2
+    property_type   VARCHAR(20)        -- PropertyType
+                    CHECK (property_type IN ('apartment', 'house', 'parking', 'commercial', 'storage')),
+    price_chf       INT CHECK (price_chf > 0),      -- EN CENTIMES, loyer mensuel charges comprises
+    charges_chf     INT CHECK (charges_chf > 0),    -- EN CENTIMES, part des charges dans price_chf
+    nb_rooms        DECIMAL(3,1) CHECK (nb_rooms > 0),
+    surface_m2      DECIMAL(7,2) CHECK (surface_m2 > 0),  -- 45.5 m² reste 45.5
     floor           INT,               -- 0 = rez, négatif = sous-sol
     address         TEXT,
     city            VARCHAR(100),
-    canton          VARCHAR(2),        -- code à deux lettres : GE, VD…
+    canton          VARCHAR(2) CHECK (canton ~ '^[A-Z]{2}$'),  -- GE, VD…
     postal_code     VARCHAR(10),
     listing_type    VARCHAR(10) DEFAULT 'rent',
 
@@ -42,13 +47,15 @@ CREATE TABLE listings (
     images          TEXT[] DEFAULT '{}',
 
     first_seen_at   TIMESTAMPTZ DEFAULT NOW(),
-    is_active       BOOLEAN DEFAULT TRUE,
+    is_active       BOOLEAN NOT NULL DEFAULT TRUE,
 
     UNIQUE(source_id, external_id)
 );
 
 CREATE INDEX idx_listings_fingerprint ON listings(fingerprint);
-CREATE INDEX idx_listings_search ON listings(is_active, city, nb_rooms, price_chf);
+-- Hard filters du matching (§5.3) : canton et type d'abord, sur les annonces actives.
+CREATE INDEX idx_listings_search ON listings(canton, property_type, price_chf)
+    WHERE is_active;
 CREATE INDEX idx_listings_enriched ON listings USING GIN(enriched);
 
 CREATE TABLE users (
@@ -57,7 +64,7 @@ CREATE TABLE users (
     telegram_id BIGINT UNIQUE,
     lang        VARCHAR(2) DEFAULT 'fr',
     plan        VARCHAR(20) DEFAULT 'free',
-    is_active   BOOLEAN DEFAULT TRUE,
+    is_active   BOOLEAN NOT NULL DEFAULT TRUE,
     created_at  TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -74,9 +81,9 @@ CREATE TABLE search_profiles (
     max_price          INT,            -- EN CENTIMES
     min_surface        INT,
     required_amenities TEXT[],
-    pets_required      BOOLEAN DEFAULT FALSE,
+    pets_required      BOOLEAN NOT NULL DEFAULT FALSE,
     custom_criteria    TEXT,
-    is_active          BOOLEAN DEFAULT TRUE,
+    is_active          BOOLEAN NOT NULL DEFAULT TRUE,
     created_at         TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -99,6 +106,6 @@ CREATE TABLE notifications (
 CREATE TABLE postal_codes (
     postal_code  VARCHAR(4)  NOT NULL,
     locality     TEXT        NOT NULL,
-    canton       VARCHAR(2)  NOT NULL,
+    canton       VARCHAR(2)  NOT NULL CHECK (canton ~ '^[A-Z]{2}$'),
     PRIMARY KEY (postal_code, locality)
 );

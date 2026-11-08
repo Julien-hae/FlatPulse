@@ -33,6 +33,14 @@ LOGGING_CONFIG = {
 }
 
 
+def log_level_name() -> str:
+    """The level named by the LOG_LEVEL variable; unset or empty, INFO.
+
+    The only reader of LOG_LEVEL: configure_logger() applies it, Config validates it.
+    """
+    return os.environ.get("LOG_LEVEL") or "INFO"
+
+
 def configure_logger() -> None:
     """Configure logging.
 
@@ -43,7 +51,7 @@ def configure_logger() -> None:
     configuring the environment variable 'LOG_LEVEL'.
     """
     logging.config.dictConfig(LOGGING_CONFIG)
-    loglevel_name = os.environ.get("LOG_LEVEL", default="INFO")
+    loglevel_name = log_level_name()
     loglevel = logging.getLevelName(loglevel_name)
     if isinstance(loglevel, str):
         LOGGER.warning(  # pylint: disable=logging-too-many-args
