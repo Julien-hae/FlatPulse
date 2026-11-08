@@ -13,6 +13,9 @@ from flatpulse.scrapers.rate_limiter import RateLimiter
 
 logger = logging.getLogger(__name__)
 
+# Logged for each listing skipped as invalid; the live audit (#119) counts them by it.
+SKIPPED_INVALID_LISTING = "Skipped invalid listing: %s"
+
 
 class AbstractScraper(ABC):
     """Contract every scraper must implement, regardless of source technology."""
@@ -84,5 +87,5 @@ class HttpScraper(AbstractScraper):
         try:
             return parse()
         except ValueError as error:
-            logger.warning("Skipped invalid listing: %s", error)
+            logger.warning(SKIPPED_INVALID_LISTING, error)
             return None

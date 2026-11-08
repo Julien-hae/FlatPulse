@@ -15,8 +15,8 @@ from tests.helpers import response_from_fixture
 class TestNaefScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
     """Contract tests and named cases of NaefScraper.
 
-    `naef_cases.json` holds named cases captured on 30.10.2026 and 03.11.2026,
-    unchanged from the catalogue.
+    `naef_cases.json` holds named cases captured on 30.10.2026, 03.11.2026 and
+    08.11.2026, unchanged from the catalogue.
     """
 
     scraper_class = NaefScraper
@@ -62,6 +62,17 @@ class TestNaefScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
                 "city": "La Chaux-de-Fonds",
             },
         )
+
+    async def test_naef_canton_from_postal_code_when_empty(self) -> None:
+        """An empty `adresse_canton` is read from the postal code, and its town."""
+        cases = {
+            "214177.1113": "VD",  # 1070 Puidoux
+            "276209.1": "NE",  # 2300 La Chaux-de-Fonds
+            "EC.47365": "GE",  # 1290 Versoix, a code shared with Vaud
+        }
+        for external_id, canton in cases.items():
+            with self.subTest(external_id=external_id):
+                await self.assert_listing(external_id, {"canton": canton})
 
     async def test_naef_title_falls_back_to_type_designation(self) -> None:
         """A missing brochure title is replaced by the property's designation."""
@@ -159,10 +170,6 @@ class TestNaefScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
     async def test_naef_keeps_other_cantons(self) -> None:
         """A Valais listing keeps the VS canton abbreviation."""
         await self.assert_listing("CP.19643", {"canton": "VS"})
-
-    async def test_naef_empty_canton_is_none_with_postal_code(self) -> None:
-        """An empty source canton stays None while its postal code is retained."""
-        await self.assert_listing("276209.1", {"canton": None, "postal_code": "2300"})
 
     async def test_naef_keeps_every_fixture_property(self) -> None:
         """Every property in the fixture is returned exactly once."""

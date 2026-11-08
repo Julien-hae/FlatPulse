@@ -4,6 +4,7 @@ import unittest
 from unittest.mock import AsyncMock, MagicMock, Mock, call, patch
 
 import httpx
+from parsel import Selector
 
 from flatpulse.common.models import Listing, PropertyType
 from flatpulse.scrapers.rate_limiter import RateLimiter
@@ -30,8 +31,9 @@ def fake_get(url: str) -> MagicMock:
 class TestComptoirScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
     """Contract tests and named cases of ComptoirScraper.
 
-    `comptoir_cases.html` holds nine catalogue cards without pagination;
-    `comptoir/` holds their nine fiches of 04.11.2026, contact anonymised.
+    `comptoir_cases.html` holds ten catalogue cards without pagination;
+    `comptoir/` holds their ten fiches of 04.11.2026 and 08.11.2026, contact
+    anonymised.
     """
 
     scraper_class = ComptoirScraper
@@ -122,6 +124,73 @@ class TestComptoirScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase
             },
         )
 
+    async def test_comptoir_untitled_fiche_takes_property_type(self) -> None:
+        """A parking published with an empty <h1> is titled by its « Type de bien »."""
+        await self.assert_listing(
+            "901969",
+            {
+                "title": "Parking",
+                "property_type": PropertyType.PARKING,
+                "price_chf": 20000,
+                "floor": -2,
+                "address": "Rue du Fort-Barreau 15",
+                "city": "Genève",
+                "canton": "GE",
+                "postal_code": None,
+            },
+        )
+
+    def test_comptoir_zero_rent_is_none(self) -> None:
+        """« CHF 0.- / mois » is no price, never 0: the untitled Satigny parking.
+
+        `comptoir/279533.html` is a fiche without its catalogue card, parsed alone.
+        """
+        fiche = Selector(text=response_from_fixture("comptoir/279533.html").text)
+
+        listing = self.new_scraper().parse_listing(fiche)
+
+        self.assertEqual(listing.title, "Parking")
+        self.assertIsNone(listing.price_chf)
+        self.assertEqual(listing.city, "Satigny")
+        self.assertEqual(listing.canton, "GE")
+
+    def test_comptoir_no_charges_without_rent(self) -> None:
+        """Charges belong to a rent: « CHF 0.- / mois » is no rent, so no charges."""
+        html = response_from_fixture("comptoir/279533.html").text.replace(
+            "</table>",
+            "<tr><th>Charges</th><td>CHF 150.-</td></tr></table>",
+            1,
+        )
+
+        listing = self.new_scraper().parse_listing(Selector(text=html))
+
+        self.assertIsNone(listing.price_chf)
+        self.assertIsNone(listing.charges_chf)
+
+    async def test_comptoir_fiche_without_h1_is_skipped(self) -> None:
+        """Only an empty <h1> falls back on the type: no <h1> at all means a redesign.
+
+        Titling such fiches by their type would hide it from the live audit (#119),
+        which counts the listings skipped as invalid.
+        """
+        expected = len(await self.fetch_from_fixture()) - 1
+
+        def get(url: str) -> MagicMock:
+            response = fake_get(url)
+            if GENEVA in url:
+                response.text = response.text.replace("<h1", "<h3")
+            return response
+
+        with (
+            patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get,
+            self.assertLogs("flatpulse.scrapers.base", "WARNING") as logs,
+        ):
+            mock_get.side_effect = get
+            listings = await self.new_scraper().fetch_listings()
+
+        self.assertEqual(len(listings), expected)
+        self.assertIn("title", logs.output[0])
+
     async def test_comptoir_rent_per_square_meter(self) -> None:
         """« CHF 600.- / m² / an » on 117 m² is a monthly rent of CHF 5'850.-."""
         await self.assert_listing(
@@ -194,7 +263,8 @@ class TestComptoirScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase
         def get(url: str) -> MagicMock:
             response = fake_get(url)
             if GENEVA in url:
-                response.text = response.text.replace("<h1", "<h3")
+                # No canonical link, no URL: Listing rejects the fiche.
+                response.text = response.text.replace('rel="canonical"', 'rel="x"')
             return response
 
         with (

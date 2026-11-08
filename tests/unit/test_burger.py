@@ -33,12 +33,17 @@ def apartment_with_surface_row(row: str) -> Selector:
 class TestBurgerScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
     """Contract tests and named cases of BurgerScraper.
 
-    `burger_sitemap.xml` keeps ten `/fr/louer/` entries and one sale fiche from the
-    sitemap of 30.10.2026; `burger/` holds the ten rental fiches, contact anonymised.
+    `burger_sitemap.xml` keeps eleven `/fr/louer/` entries and one sale fiche from
+    the sitemaps of 30.10.2026 and 08.11.2026; `burger/` holds the eleven rental
+    fiches, contact anonymised.
     """
 
     scraper_class = BurgerScraper
     fixture_name = "burger_sitemap.xml"
+
+    def new_scraper(self) -> BurgerScraper:
+        """A fresh BurgerScraper, typed as such: its parse_listing also takes the URL."""
+        return BurgerScraper(rate_limiter=AsyncMock(spec=RateLimiter))
 
     async def fetch_from_fixture(self) -> list[Listing]:
         """Serve the sitemap, then its rental fiches."""
@@ -134,6 +139,34 @@ class TestBurgerScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
             },
         )
 
+    async def test_burger_covered_parking(self) -> None:
+        """« Place couverte » is a parking; « Dès CHF 360.- » is its rent."""
+        await self.assert_listing(
+            LOUER + "places-de-parking-a-louer-150342",
+            {
+                "title": "Places de parking à louer",
+                "property_type": PropertyType.PARKING,
+                "price_chf": 36000,
+                "address": "Rue Emile-Yung 3 bis",
+                "postal_code": "1205",
+                "city": "Genève",
+                "canton": "GE",
+            },
+        )
+
+    async def test_burger_postal_code_and_canton(self) -> None:
+        """The « NPA localité » line gives the postal code, and the code the canton."""
+        cases = {
+            "geneve-appartement-de-3-pieces-au-2eme-etage": ("1206", "GE"),
+            "le-lignon-parking-interne-au-1er-sous-sol": ("1219", "GE"),
+            "veyrier-veyrierbr-depot-a-louer": ("1255", "GE"),
+        }
+        for slug, (postal_code, canton) in cases.items():
+            with self.subTest(slug=slug):
+                await self.assert_listing(
+                    LOUER + slug, {"postal_code": postal_code, "canton": canton}
+                )
+
     def test_burger_no_charges_without_rent(self) -> None:
         """Charges are a share of price_chf: no rent, no charges either."""
         url = LOUER + "geneve-appartement-de-3-pieces-au-2eme-etage"
@@ -226,6 +259,7 @@ class TestBurgerScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
             "satigny-bureaux-de-214-m2-a-satignybr": PropertyType.COMMERCIAL,
             "le-lignon-parking-interne-au-1er-sous-sol": PropertyType.PARKING,
             "veyrier-veyrierbr-depot-a-louer": PropertyType.STORAGE,
+            "places-de-parking-a-louer-150342": PropertyType.PARKING,
         }
         for slug, property_type in cases.items():
             with self.subTest(slug=slug):
@@ -279,7 +313,7 @@ class TestBurgerScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
         )
 
     async def test_burger_acquires_before_sitemap_and_each_fiche(self) -> None:
-        """Await a token before the sitemap GET and each of the ten fiche GETs."""
+        """Await a token before the sitemap GET and each of the eleven fiche GETs."""
         limiter = AsyncMock(spec=RateLimiter)
         scraper = BurgerScraper(rate_limiter=limiter)
         manager = Mock()
@@ -295,6 +329,7 @@ class TestBurgerScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
             LOUER + "le-lignon-parking-interne-au-1er-sous-sol",
             LOUER + "satigny-bureaux-de-214-m2-a-satignybr",
             LOUER + "veyrier-veyrierbr-depot-a-louer",
+            LOUER + "places-de-parking-a-louer-150342",
         ]
 
         with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get:

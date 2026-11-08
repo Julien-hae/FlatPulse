@@ -61,19 +61,24 @@ class ComptoirScraper(HttpScraper):
         """Extract the listing from a fiche, mostly from its « Détails » table."""
         url = node.css("link[rel=canonical]::attr(href)").get("")
         city, _, canton = (self._text(node.css("h1 + h2")) or "").partition(", ")
-        rent = self._detail(node, "Loyer")
-        # Charges carry no unit: they belong only to a monthly rent.
-        monthly = rent is not None and is_monthly_rent(rent)
-        charges = self._detail(node, "Charges") if monthly else None
         surface_m2 = parse_surface(self._detail(node, "Surface"))
+        price_chf = parse_monthly_rent(
+            self._text(node.css("h1 ~ .heading-3")), surface_m2
+        )
+        rent = self._detail(node, "Loyer")
+        # Charges carry no unit: they belong only to a known, monthly rent.
+        monthly = price_chf is not None and rent is not None and is_monthly_rent(rent)
+        charges = self._detail(node, "Charges") if monthly else None
+        property_label = self._detail(node, "Type de bien")
+        h1 = node.css("h1")
         return Listing(
             external_url=url,
             external_id=url.rstrip("/").rsplit("/", 1)[-1],
-            title=self._text(node.css("h1")) or "",
-            property_type=parse_property_type(self._detail(node, "Type de bien")),
-            price_chf=parse_monthly_rent(
-                self._text(node.css("h1 ~ .heading-3")), surface_m2
-            ),
+            # An empty <h1> (some parkings) is named by the type; no <h1> at all is a
+            # redesign, left to fail validation so that the live audit (#119) sees it.
+            title=self._text(h1) or (property_label if h1 else None) or "",
+            property_type=parse_property_type(property_label),
+            price_chf=price_chf,
             charges_chf=parse_swiss_price(charges) or None,
             nb_rooms=parse_rooms(self._detail(node, "Pièces")),
             surface_m2=surface_m2,

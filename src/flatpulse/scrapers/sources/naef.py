@@ -7,6 +7,7 @@ from parsel import Selector
 from flatpulse.common.models import Listing, PropertyType
 from flatpulse.common.utils import (
     canton_code,
+    canton_from_postal_code,
     parse_monthly_rent,
     parse_rooms,
     parse_surface,
@@ -81,8 +82,12 @@ class NaefScraper(HttpScraper):
         return TYPE_CODE_TO_PROPERTY.get(type_code)
 
     def _canton(self, node: Selector) -> str | None:
-        """Return canton abbreviation."""
-        return canton_code(self._text(node, "adresse_canton"))
+        """Canton abbreviation; an empty `adresse_canton` is read from the postal code."""
+        return canton_code(
+            self._text(node, "adresse_canton")
+        ) or canton_from_postal_code(
+            self._text(node, "npa"), self._text(node, "adresse_localite")
+        )
 
     def _charges_chf(self, node: Selector) -> int | None:
         """Return charges in CHF."""
