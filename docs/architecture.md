@@ -392,7 +392,8 @@ Ces cas sont **observés**, pas hypothétiques. Un scraper qui les ignore produi
 données fausses silencieusement.
 
 - **Prix sur demande → `None`, jamais `0`.** Un `0` traverse les hard filters de prix et
-  déclenche des notifications absurdes.
+  déclenche des notifications absurdes. Un loyer affiché à zéro (`CHF 0.- / mois`,
+  Comptoir) est un prix absent : `parse_monthly_rent()` rend `None`.
 - **Formats de prix multiples** : `CHF 3'500.— / mois`, `CHF 2'320.- + charges`,
   `Dès CHF 2'320.- + charges`. Tiret cadratin comme tiret simple. Écarter les lignes
   contenant « charges » casse le format « Dès … + charges ».
@@ -414,8 +415,29 @@ données fausses silencieusement.
   le scraper remonte tout et renseigne `property_type`, `canton` (et `listing_type` pour
   la vente) dans le `Listing` (§5.1) ; le filtrage se fait en aval. Ne pas se fier aux paramètres de filtre de la
   source pour typer une annonce : ils sont parfois ignorés côté serveur.
-- **Canton** tantôt en toutes lettres, tantôt en code, parfois absent. La colonne est un
-  `VARCHAR(2)` : normaliser.
+- **Canton** tantôt en toutes lettres, tantôt en code, parfois absent (Naef : un quart
+  des annonces ; Burger : jamais écrit). La colonne est un `VARCHAR(2)` : normaliser. Absent,
+  il se déduit du NPA par `utils.canton_from_postal_code(postal_code, locality)` (#131),
+  jamais deviné : un NPA inconnu, ou partagé entre cantons sans localité reconnue, donne
+  `None` et un WARNING. **1290** est Versoix (GE) **et** Chavannes-des-Bois (VD) : la
+  localité tranche.
+
+  La table est **`sql/postal_codes.csv`**, aux colonnes de la future table SQL
+  `postal_codes` (`postal_code,locality,canton`, #133) : une ligne par (NPA, localité),
+  avec le canton qui porte le plus d'adresses de la localité (colonne `Adressenanteil`) ;
+  les lignes sans canton (Liechtenstein) sont ignorées. Elle est tirée de l'**open data
+  swisstopo** (répertoire officiel des localités, collection STAC
+  `ch.swisstopo-vd.ortschaftenverzeichnis_plz`, « Source : Office fédéral de topographie
+  swisstopo ») et se rafraîchit par `python -m flatpulse.common.postal_codes` ; swisstopo
+  injoignable → erreur explicite, la table garde sa version. Elle est lue une fois par
+  processus, par `postal_codes.read_table()` seulement : le passage à PostgreSQL (#133)
+  remplace cette fonction par un `SELECT`, et charge le fichier tel quel
+  (`COPY postal_codes FROM 'sql/postal_codes.csv' CSV HEADER`). Le parsing du répertoire
+  est testé sur un extrait réel figé, `tests/fixtures/swisstopo_localities.csv`.
+  Le fichier est lu depuis le checkout du dépôt (il n'est pas dans le paquet) : `Config`
+  vérifie sa présence au démarrage, pour qu'il manque au lancement et non au premier
+  poll, où l'erreur ferait tomber toute la source.
+
 - **Poids des pages** : Moser Vernet = 2,9 Mo par poll, soit ~2,8 Go/jour à 90 s sans
   `If-None-Match`.
 
@@ -495,7 +517,9 @@ Chaque taux est comparé à son seuil, `MIN_FILL_RATE`, déclaré dans le test p
 type de bien et champ : la mesure du 08.11.2026 moins 10 points, sur les types d'au
 moins 20 annonces. Un taux sous son seuil, un type disparu, un catalogue vide ou une
 annonce rejetée comme invalide font échouer l'audit ; l'échec affiche le tableau complet.
-Un seuil qu'on baisse se justifie en commentaire, comme un `# type: ignore`.
+Un seuil qu'on baisse se justifie en commentaire, comme un `# type: ignore`. Les
+résultats de chaque run, et ce qui en a été vérifié sur le site, sont consignés dans
+**`docs/live-audit.md`**.
 
 Pas de dossier `regression/`. Un test de régression est un test unitaire ordinaire qui
 se trouve être né d'un bug ; le classer par son origine plutôt que par son coût

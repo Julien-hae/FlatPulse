@@ -2,6 +2,8 @@
 
 > Généré depuis `notebooks/spike-agences.ipynb` le 22.09.2026 07:29 UTC.
 > Naef : volumes et mapping actualisés au 30.10.2026 (#116).
+> Naef, Burger, Comptoir : localisation, titres et types revus après l'audit en direct
+> du 08.11.2026 (#131, résultats dans `docs/live-audit.md`).
 > Aucune régie ne nécessite Playwright.
 
 Les volumes sont des **fiches distinctes**, pagination suivie et dédupliquée — pas des
@@ -45,7 +47,9 @@ fiches distinctes. À recalculer au prochain passage du notebook.
   confondus. Le scraper étiquette les annonces sans les filtrer ; le filtrage vient en aval.
 - Localisation : NPA disponible sur les 963 annonces ; canton renseigné sur 726,
   vide sur 237. Le nombre d'annonces genevoises n'est pas établi pour ce relevé.
-- Fixture : `tests/fixtures/naef_cases.json` (JSON) — 7 props du catalogue du 30.10.2026, une par piège
+  Au 08.11.2026 : 959 annonces, `adresse_canton` vide sur 240 ; le canton est déduit du
+  NPA (#131), connu alors sur les 959 (387 GE).
+- Fixture : `tests/fixtures/naef_cases.json` (JSON) — 15 props des catalogues des 30.10, 03.11 et 08.11.2026, une par piège
 
 ### Clés du payload JSON
 
@@ -60,7 +64,7 @@ fiches distinctes. À recalculer au prochain passage du notebook.
 | `nb_rooms` | `nb_pieces` |
 | `surface_m2` | `surface_habitable` |
 | `city` | `adresse_localite` |
-| `canton` | `adresse_canton` (nom complet → abréviation via `utils.canton_code` ; vide → `None`) |
+| `canton` | `adresse_canton` (nom complet → abréviation via `utils.canton_code`) ; vide → `utils.canton_from_postal_code(npa, adresse_localite)` |
 | `postal_code` | `npa` |
 | `images` | `imgs` (liste ou valeurs d'un objet indexé, dans l'ordre du payload) |
 
@@ -77,6 +81,9 @@ fiches distinctes. À recalculer au prochain passage du notebook.
   `jmespath(...).getall()` extrait les URL dans l'ordre du payload (sans trier les
   clés). Une valeur absente ou vide donne un tuple vide.
 - adresse_canton est le nom complet → utils.canton_code pour le VARCHAR(2).
+- adresse_canton vide sur un quart des annonces (240/959 le 08.11.2026 : Renens VD,
+  La Chaux-de-Fonds, Delémont, Versoix…) : le canton vient du NPA. 1290 est partagé
+  entre Versoix (GE) et Chavannes-des-Bois (VD) : la localité tranche.
 - Pas de rue dans le payload : slug du link ou fiche détail.
 
 ## Agence Immobilière Rodolphe Burger SA (`burger`)
@@ -87,8 +94,8 @@ fiches distinctes. À recalculer au prochain passage du notebook.
 - Scraper : **HttpScraper** (sitemap XML + fiche HTML) : chaque poll lit le sitemap puis parse chaque fiche
 - Débit : pas de Crawl-delay · 4 req/min mesurés au spike ; un poll = sitemap + une requête par fiche (28 le 21.10.2026), à étaler par le `RateLimiter` (architecture §11)
 - Pas d'API ni de flux : ni RSS, ni JSON-LD ; les `api/…` du JS servent au formulaire de candidature
-- Volume : 27 fiches /fr/louer/ au sitemap, identiques aux 27 du scroll, toutes dans le canton de Genève — relevé le 21.10.2026
-- Fixtures : `tests/fixtures/burger_sitemap.xml` (10 entrées `/fr/louer/` et une vente, sitemap du 30.10.2026) et les 10 fiches correspondantes dans `tests/fixtures/burger/` (contact anonymisé) ; `burger_listing.html` (listing, spike du 22.09)
+- Volume : 27 fiches /fr/louer/ au sitemap, identiques aux 27 du scroll, toutes dans le canton de Genève — relevé le 21.10.2026 ; 43 fiches au 08.11.2026
+- Fixtures : `tests/fixtures/burger_sitemap.xml` (11 entrées `/fr/louer/` et une vente, sitemaps des 30.10 et 08.11.2026) et les 11 fiches correspondantes dans `tests/fixtures/burger/` (contact anonymisé) ; `burger_listing.html` (listing, spike du 22.09)
 
 ### Sélecteurs CSS (fiche détail)
 
@@ -101,7 +108,8 @@ fiches distinctes. À recalculer au prochain passage du notebook.
 | charges | `//div[text()='Charges']/following-sibling::div/text()` ; affichées sans unité, donc ajoutées au loyer seulement s'il est mensuel (`price_chf`), et conservées dans `charges_chf` ; loyer annuel, au m² ou sur demande → `charges_chf = None` |
 | étage | dans `h1` : « N(er\|e\|ème) étage » = N, « rez-de-chaussée » / « rdc » = 0, « N(er\|e) sous-sol » = -N ; autres cas = `None` |
 | bloc de détails | `div.space-y-4.mt-6` — unique, absent des cartes « Ces biens pourraient vous intéresser » |
-| rue / NPA ville | dans ce bloc, `div.text-base::text` (deux lignes séparées par `<br>`) |
+| rue / NPA ville | dans ce bloc, `div.text-base::text` (deux lignes séparées par `<br>`) : `address` = la rue ; la ligne `1205 Genève` donne `postal_code` et `city` |
+| canton | absent de la fiche : `utils.canton_from_postal_code(postal_code, city)` |
 | type / pièces / surface | dans ce bloc, chaque `div.text-sm` lu en entier contre sa grammaire : `<Type>[ <n> pièces]`, puis `[ENV. \| de ]<n> m2[ à <n> m2]` ; une ligne hors grammaire est loguée et ignorée |
 | images | `div.swiper-slide img::attr(data-src)`, relatives à `https://www.burger-sa.ch/` |
 
@@ -114,7 +122,8 @@ fiches distinctes. À recalculer au prochain passage du notebook.
 - Le slug peut mentir (35-pieces affiché 3.0 pièces) : faire foi au texte.
 - external_id = URL complète : deux fiches partagent le préfixe …mont-bla.
 - Hôte canonique www.burger-sa.ch (celui du sitemap et du `link rel=canonical`).
-- Type de bien = première ligne des caractéristiques : Appartement, Studio, Maison ; Place ouverte, Bureau, Arcade, Garage individuel, Dépôt, Commerce. Non filtré par le scraper.
+- Type de bien = première ligne des caractéristiques : Appartement, Studio, Maison ; Place ouverte, Place couverte (vue le 08.11.2026), Bureau, Arcade, Garage individuel, Dépôt, Commerce. Non filtré par le scraper.
+- Le canton n'est écrit nulle part sur la fiche : seul le NPA le donne.
 - « 0.0 pièces » affiché quand le nombre est inconnu : c'est `None`.
 - Le 21.10.2026, une fiche sur six enchaînées a coupé la connexion sans réponse (`RemoteProtocolError`), puis répondu normalement : raison de plus pour espacer les requêtes ; une fiche en échec est loguée et ignorée, sans faire tomber le poll.
 
@@ -128,7 +137,7 @@ fiches distinctes. À recalculer au prochain passage du notebook.
 - Canal de repli : GET /?post_type=property_for_rent&feed=rss2 — 24 items, pubDate réelles. Le sitemap property_for_rent-*.xml est périmé (lastmod 2025-11)
 - Volume : 375 biens en location au 04.11.2026 (Genève, Vaud, Valais)
 - Flux : +0 depuis 22.09.2026 07:25
-- Fixture : `tests/fixtures/comptoir_cases.html` — 9 cartes du catalogue, une par piège ; `tests/fixtures/comptoir/<slug>.html` — leurs 9 fiches du 04.11.2026 (contact anonymisé ; scripts, styles, SVG et srcset retirés)
+- Fixture : `tests/fixtures/comptoir_cases.html` — 10 cartes du catalogue, une par piège ; `tests/fixtures/comptoir/<slug>.html` — leurs 10 fiches des 04.11 et 08.11.2026, plus `279533.html`, fiche seule sans carte, lue directement par `parse_listing` (contact anonymisé ; scripts, styles, SVG et srcset retirés)
 
 ### Sélecteurs de la fiche
 
@@ -140,8 +149,9 @@ Une ligne absente → `None`.
 |---|---|
 | lien de la fiche (catalogue) | `article.teaser--property_for_rent a:has(h2)::attr(href)` |
 | `external_url` | `link[rel=canonical]::attr(href)` ; `external_id` = son dernier segment |
-| `title` | `h1` |
+| `title` | `h1` ; `h1` présent mais vide → `Type de bien` (`Parking`) ; pas de `h1` du tout → fiche rejetée (refonte à voir dans l'audit) |
 | `city`, `canton` | `h1 + h2` : `Yvorne, Vaud` → `Yvorne`, `canton_code("Vaud")` |
+| `postal_code` | **non publié** → `None` |
 | `price_chf` | `h1 ~ .heading-3` (`CHF 3'070.- / mois charges comprises`) → `parse_monthly_rent` |
 | `property_type` | `Type de bien` → `parse_property_type` (`Dépôt, Entrepôt` → STORAGE) |
 | `address` | `Adresse` (`Route de Lausanne 24 A, Yvorne`), avant la virgule |
@@ -155,12 +165,22 @@ Une ligne absente → `None`.
 ### Pièges
 
 - propertyId (Apimo) absent des annonces sans photo : external_id = chemin de la fiche.
+- Des fiches sont publiées **sans titre** : `<h1>` vide, `<title>` réduit à
+  `- Comptoir Immobilier`, et le slug de l'URL devient le numéro de la fiche
+  (`…/geneve-geneve/921110/`). 5 parkings le 08.11.2026 ; le reste du tableau est complet.
+  Le titre devient alors le `Type de bien`. Seul un `<h1>` **vide** est rattrapé : une
+  fiche sans `<h1>` reste rejetée, pour qu'une refonte du gabarit se voie dans l'audit.
+- Aucun NPA sur la fiche : l'adresse est « rue, ville » et la carte n'a que
+  `data-lat` / `data-lng`. `postal_code` reste `None` ; le canton vient de l'en-tête.
 - Le titre contredit parfois la métadonnée : le tableau « Détails » fait foi (« duplex en attique », `Etage` : `2ème`).
 - La carte n'affiche pas toujours la surface alors que la fiche la donne (`cabinet-bureau-remettre-au-centre-de-sion` : rien sur la carte, `Surface utile` 120 m² sur la fiche) : sans elle, un loyer au m² serait perdu.
 - Le libellé de surface varie : `Surface habitable` (logements), `Surface utile` (bureaux, arcades).
 - Prix sur demande → price_chf = None.
+- Loyer affiché `CHF 0.- / mois` (parking 279533 à Satigny, 08.11.2026) : pas de prix
+  publié → `price_chf = None`, jamais 0. Ces fiches ont aussi un tableau avec une ligne
+  `Téléphone` en plus de `Votre contact` : les deux sont anonymisés dans les fixtures.
 - Loyers non mensuels (30.10.2026) : CHF 18'720.- / an (3 cartes sur 374) et CHF 600.- / m² / an (104 cartes, surtout des bureaux). `parse_monthly_rent` divise par 12 et multiplie par la surface de la fiche ; sans surface, None.
-- `Charges` n'a pas d'unité : annuelles quand le loyer est `/ an` (`CHF 6'720.-` à Monthey), au m² quand il est `/ m² / an`. Elles ne sont gardées que sur un loyer mensuel ; le prix de l'en-tête est déjà charges comprises.
+- `Charges` n'a pas d'unité : annuelles quand le loyer est `/ an` (`CHF 6'720.-` à Monthey), au m² quand il est `/ m² / an`. Elles ne sont gardées que sur un loyer mensuel connu (`CHF 0.- / mois` → ni prix, ni charges) ; le prix de l'en-tête est déjà charges comprises.
 - Les fiches disparaissent vite : 2 des 7 cartes du 30.10.2026 renvoyaient « Page Not Found » le 04.11.2026.
 - Le HTML ferme les `<th>` par `</td>` : parsel (lxml) le répare, la lecture par libellé fonctionne.
 - Canton écrit canton-de-geneve dans les URL, Genève dans l'en-tête de la fiche.

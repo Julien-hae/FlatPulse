@@ -22,6 +22,7 @@ genevoises dans les exemples et les fixtures, pas Zürich.
 | Quoi construire, dans quel ordre, avec quels tests | **Les issues GitHub** (#41-#81) |
 | Comment le système est architecturé | `docs/architecture.md` |
 | Comment scraper une régie précise | `docs/spike-agencies.md` |
+| Ce que les scrapers extraient vraiment (audit en direct) | `docs/live-audit.md` |
 | Ce qui compte comme « terminé » | Issue #81 (Definition of Done) |
 
 **Avant d'implémenter quoi que ce soit, lire la story GitHub correspondante.** Chaque

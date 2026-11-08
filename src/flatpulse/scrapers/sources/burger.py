@@ -11,6 +11,7 @@ from parsel import Selector
 
 from flatpulse.common.models import Listing, PropertyType
 from flatpulse.common.utils import (
+    canton_from_postal_code,
     is_monthly_rent,
     parse_floor,
     parse_monthly_rent,
@@ -30,6 +31,13 @@ _SURFACE_ROW = re.compile(
     r"(?:env\. ?|de )?(?P<m2>\d+(?:\.\d+)?) m2(?: à \d+(?:\.\d+)? m2)?",
     re.IGNORECASE,
 )
+
+
+class _Locality(NamedTuple):
+    """The « NPA localité » line of a fiche's address."""
+
+    postal_code: str | None = None
+    city: str | None = None
 
 
 class _Features(NamedTuple):
@@ -86,6 +94,7 @@ class BurgerScraper(HttpScraper):
         if price_chf is not None and charges_chf is not None:
             price_chf += charges_chf
         title = self._get_title(node)
+        locality = self.locality(address)
         return Listing(
             external_url=url,
             external_id=url,
@@ -97,7 +106,9 @@ class BurgerScraper(HttpScraper):
             nb_rooms=features.nb_rooms,
             surface_m2=features.surface_m2,
             address=address[0] if address else None,
-            city=self.city(address),
+            postal_code=locality.postal_code,
+            city=locality.city,
+            canton=canton_from_postal_code(locality.postal_code, locality.city),
             description=node.css("div.prose").xpath("normalize-space()").get() or None,
             images=tuple(
                 urljoin(self.base_url, src)
@@ -129,13 +140,16 @@ class BurgerScraper(HttpScraper):
         return features
 
     @staticmethod
-    def city(address: list[str]) -> str | None:
-        """Town of the "NPA town" address line, e.g. "1204 Genève"; None without one."""
+    def locality(address: list[str]) -> _Locality:
+        """Postal code and town of the "NPA town" address line, e.g. "1204 Genève".
+
+        Both are None without such a line.
+        """
         for line in address[1:]:
             npa, _, town = line.partition(" ")
             if npa.isdigit() and town:
-                return town
-        return None
+                return _Locality(postal_code=npa, city=town)
+        return _Locality()
 
     def _get_rent(self, node: Selector) -> str | None:
         """Get the rent."""

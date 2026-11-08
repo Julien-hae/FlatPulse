@@ -2,7 +2,9 @@
 
 import logging
 import re
+from functools import cache
 
+from flatpulse.common import postal_codes
 from flatpulse.common.models import PropertyType
 
 logger = logging.getLogger(__name__)
@@ -26,6 +28,7 @@ _PROPERTY_TYPES = {
     "studio": PropertyType.APARTMENT,
     "maison": PropertyType.HOUSE,
     "place ouverte": PropertyType.PARKING,
+    "place couverte": PropertyType.PARKING,
     "garage individuel": PropertyType.PARKING,
     "parking": PropertyType.PARKING,
     "atelier": PropertyType.COMMERCIAL,
@@ -86,9 +89,10 @@ def parse_monthly_rent(text: str | None, surface_m2: float | None) -> int | None
 
     « / an » is divided by 12; « / m² » is multiplied by the surface,
     and gives None without a surface rather than a per-m² amount posing as a rent.
+    A rent of zero (« CHF 0.- / mois ») is no price: None, never 0.
     """
     amount = parse_swiss_price(text)
-    if amount is None or text is None:
+    if not amount or text is None:
         return None
     monthly: float = amount
     if _PER_M2.search(text):
@@ -132,6 +136,44 @@ def canton_code(canton: str | None) -> str | None:
     if code is None:
         logger.warning("Unknown canton name %r", canton)
     return code
+
+
+def canton_from_postal_code(
+    postal_code: str | None, locality: str | None
+) -> str | None:
+    """Canton of a Swiss postal code, read in swisstopo's directory of localities.
+
+    The table is `sql/postal_codes.csv`, built from swisstopo's directory of
+    localities (`flatpulse.common.postal_codes`).
+    A code within one canton needs no locality: « 1206 » is GE. A code shared by
+    cantons is decided by its locality, case aside: « 1290 Versoix » is GE,
+    « 1290 Chavannes-des-Bois » VD. A shared code without a known locality, or an
+    unknown code, gives None and a WARNING: a canton is never guessed.
+    """
+    if not postal_code:
+        return None
+    localities = _postal_code_localities().get(postal_code)
+    if localities is None:
+        logger.warning("Unknown postal code %r", postal_code)
+        return None
+    cantons = set(localities.values())
+    if len(cantons) == 1:
+        return cantons.pop()
+    canton = localities.get((locality or "").casefold())
+    if canton is None:
+        logger.warning(
+            "Postal code %r spans cantons %s, locality %r decides none",
+            postal_code,
+            sorted(cantons),
+            locality,
+        )
+    return canton
+
+
+@cache
+def _postal_code_localities() -> dict[str, dict[str, str]]:
+    """The postal code table, read once per process (`postal_codes.read_table`)."""
+    return postal_codes.read_table()
 
 
 def parse_surface(text: str | None) -> float | None:
