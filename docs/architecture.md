@@ -464,7 +464,7 @@ tests/
                  test_matching, test_telegram, test_dispatcher, test_db,
                  test_utils, test_config, test_adaptive
   contract/      test_scraper_contract.py  → ScraperContractMixin
-  integration/   test_pipeline.py
+  integration/   test_pipeline.py, test_live_sources.py (audit live opt-in)
   fixtures/      HTML et JSON figés : des cas nommés, extraits réels par régie
   helpers.py     FIXTURES_DIR, response_from_fixture (partagés par les tests)
 ```
@@ -480,6 +480,15 @@ raison qui les a fait naître :
   `docker compose up`. Aujourd'hui `test_pipeline.py` est encore entièrement mocké, mais
   c'est là que les tests lents iront, et c'est ce qui rend le dossier utile : pouvoir
   lancer tout sauf eux.
+
+L'audit réel des sources (`tests/integration/test_live_sources.py`) est ignoré par
+défaut. Pour l'exécuter :
+`FLATPULSE_LIVE=1 python -m unittest tests.integration.test_live_sources`.
+Il récupère chaque catalogue une seule fois, respecte le débit de chaque source et logue
+la répartition par type et canton ainsi que le taux de remplissage des champs. Ce test
+peut être long, notamment lorsque le scraper visite chaque fiche détail.
+Les taux sont un rapport informatif, sans seuil qui fasse échouer le test; le catalogue
+vide ou les annonces rejetées comme invalides restent des échecs.
 
 Pas de dossier `regression/`. Un test de régression est un test unitaire ordinaire qui
 se trouve être né d'un bug ; le classer par son origine plutôt que par son coût
