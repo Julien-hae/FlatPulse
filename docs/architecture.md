@@ -464,9 +464,10 @@ tests/
                  test_matching, test_telegram, test_dispatcher, test_db,
                  test_utils, test_config, test_adaptive
   contract/      test_scraper_contract.py  → ScraperContractMixin
-  integration/   test_pipeline.py
+  integration/   test_pipeline.py, test_live_sources.py (audit live opt-in)
   fixtures/      HTML et JSON figés : des cas nommés, extraits réels par régie
   helpers.py     FIXTURES_DIR, response_from_fixture (partagés par les tests)
+  live_report.py calcul et rendu du rapport d'audit live (sans réseau, testé dans unit/)
 ```
 
 Le découpage sépare les tests **par ce dont ils ont besoin pour tourner**, pas par la
@@ -480,6 +481,21 @@ raison qui les a fait naître :
   `docker compose up`. Aujourd'hui `test_pipeline.py` est encore entièrement mocké, mais
   c'est là que les tests lents iront, et c'est ce qui rend le dossier utile : pouvoir
   lancer tout sauf eux.
+
+L'audit réel des sources (`tests/integration/test_live_sources.py`) est ignoré par
+défaut. Pour l'exécuter :
+`FLATPULSE_LIVE=1 python -m unittest -v tests.integration.test_live_sources 2>&1 | tee live-$(date +%Y%m%d-%H%M).log`
+(les rapports sont des logs INFO sur stderr ; `*.log` est ignoré par git).
+Il récupère chaque catalogue une seule fois, respecte le débit de chaque source et logue
+la répartition par type et canton ainsi que le taux de remplissage des champs. Ce test
+peut être long (≈ 1 h pour Comptoir, qui visite chaque fiche détail). Chaque source est
+loguée dès qu'elle est récupérée : une source en erreur réseau fait échouer son
+`subTest`, mais les autres sont auditées et leur rapport reste dans le log.
+Chaque taux est comparé à son seuil, `MIN_FILL_RATE`, déclaré dans le test par source,
+type de bien et champ : la mesure du 08.11.2026 moins 10 points, sur les types d'au
+moins 20 annonces. Un taux sous son seuil, un type disparu, un catalogue vide ou une
+annonce rejetée comme invalide font échouer l'audit ; l'échec affiche le tableau complet.
+Un seuil qu'on baisse se justifie en commentaire, comme un `# type: ignore`.
 
 Pas de dossier `regression/`. Un test de régression est un test unitaire ordinaire qui
 se trouve être né d'un bug ; le classer par son origine plutôt que par son coût
