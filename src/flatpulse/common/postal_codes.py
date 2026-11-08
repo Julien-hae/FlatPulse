@@ -1,14 +1,14 @@
-"""Swiss postal code -> canton table, shaped as the future `postal_codes` SQL table.
+"""Swiss postal code -> canton table, shaped as the `postal_codes` SQL table.
 
-`sql/postal_codes.csv` has the columns of that table (#133): one row per (postal
-code, locality), with the canton holding most of the locality's addresses. It is
-built from swisstopo's official directory of localities (open data, « Source :
+`sql/postal_codes.csv` has the columns of that table (`sql/schema.sql`): one row per
+(postal code, locality), with the canton holding most of the locality's addresses. It
+is built from swisstopo's official directory of localities (open data, « Source :
 Office fédéral de topographie swisstopo ») and refreshed by running this module:
 
     python -m flatpulse.common.postal_codes
 
-`read_table()` is the only reader: moving to PostgreSQL replaces it with a SELECT,
-and `COPY postal_codes FROM 'sql/postal_codes.csv' CSV HEADER` loads the file as is.
+`read_table()` is the only reader: moving the lookup to PostgreSQL (#133) replaces it
+with a SELECT, and `COPY postal_codes FROM … CSV HEADER` loads the file as is.
 """
 
 import csv

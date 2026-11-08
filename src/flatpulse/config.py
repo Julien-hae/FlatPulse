@@ -1,8 +1,10 @@
 """Configuration management for the FlatPulse application."""
 
+import logging
 import os
 
 from flatpulse.common import postal_codes
+from flatpulse.common.logging_configuration import log_level_name
 
 REQUIRED_VARS = ["DATABASE_URL", "TELEGRAM_BOT_TOKEN"]
 
@@ -16,7 +18,8 @@ class Config:
         if missing:
             raise SystemExit(
                 f"Missing required environment variables: {', '.join(missing)}\n"
-                f"Copy .env.example → .env and fill in the values."
+                "Export them before starting; nothing reads .env by itself: "
+                "`set -a; . ./.env; set +a` loads it into the shell (see .env.example)."
             )
         if not postal_codes.TABLE_PATH.is_file():
             raise SystemExit(
@@ -26,6 +29,21 @@ class Config:
             )
         self.database_url = os.environ["DATABASE_URL"]
         self.telegram_token = os.environ["TELEGRAM_BOT_TOKEN"]
-        self.log_level = os.environ.get("LOG_LEVEL", "INFO")
-        self.log_format = os.environ.get("LOG_FORMAT", "text")
-        self.poll_interval = int(os.environ.get("POLL_INTERVAL_DEFAULT", "120"))
+        self.log_level = log_level_name()
+        if not isinstance(logging.getLevelName(self.log_level), int):
+            raise SystemExit(
+                f"LOG_LEVEL must be DEBUG, INFO, WARNING, ERROR or CRITICAL, "
+                f"got {self.log_level!r}"
+            )
+        self.poll_interval_default = _positive_int("POLL_INTERVAL_DEFAULT", 120)
+
+
+def _positive_int(name: str, default: int) -> int:
+    """The positive whole number in variable `name`; unset or empty, `default`.
+
+    Anything else stops the process with the variable named, never a bare ValueError.
+    """
+    raw = os.environ.get(name) or str(default)
+    if not raw.isdecimal() or int(raw) == 0:
+        raise SystemExit(f"{name} must be a positive whole number, got {raw!r}")
+    return int(raw)

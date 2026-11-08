@@ -93,98 +93,24 @@ story au format `type(scope): description`, issue fermée avec un résumé.
 
 ## 4. Modèle de données
 
-Cinq tables, définies dans `sql/schema.sql` (#62) : `sources`, `listings`, `users`,
-`search_profiles`, `notifications`.
+Six tables. **Le DDL fait foi : `sql/schema.sql` (#62)**, il n'est pas recopié ici pour
+ne pas diverger.
 
-```sql
-CREATE TABLE sources (
-    id              SERIAL PRIMARY KEY,
-    name            VARCHAR(100) NOT NULL,
-    slug            VARCHAR(50) UNIQUE NOT NULL,
-    base_url        TEXT NOT NULL,
-    scraper_class   VARCHAR(100) NOT NULL,
-    poll_interval_s INT NOT NULL DEFAULT 120,
-    rate_limit_rpm  INT NOT NULL DEFAULT 10,
-    is_active       BOOLEAN DEFAULT TRUE,
-    config          JSONB DEFAULT '{}',
-    last_scraped_at TIMESTAMPTZ,
-    created_at      TIMESTAMPTZ DEFAULT NOW()
-);
+| Table | Une ligne par | À retenir |
+|---|---|---|
+| `sources` | régie scrapée | `poll_interval_s` et `rate_limit_rpm` propres à la source |
+| `listings` | annonce, unique sur `(source_id, external_id)` | montants en centimes (§4.1), `fingerprint` pour le dedup |
+| `users` | abonné, identifié par `telegram_id` ou `email` | `plan` porte l'offre (§4.2) |
+| `search_profiles` | jeu de critères d'un abonné | les hard filters du matching (§5.3) |
+| `notifications` | alerte envoyée | jamais deux fois la même annonce sur le même canal |
+| `postal_codes` | (NPA, localité) | table de référence NPA → canton (§6.1) |
 
-CREATE TABLE listings (
-    id              SERIAL PRIMARY KEY,
-    source_id       INT NOT NULL REFERENCES sources(id),
-    external_id     VARCHAR(255) NOT NULL,
-    external_url    TEXT NOT NULL,
-    fingerprint     VARCHAR(64) NOT NULL,
-
-    title           TEXT NOT NULL,
-    description     TEXT,
-    property_type   VARCHAR(20),       -- apartment, house, parking, commercial, storage
-    price_chf       INT,               -- EN CENTIMES (cf. §4.1), loyer mensuel charges comprises
-    charges_chf     INT,               -- EN CENTIMES, part des charges dans price_chf
-    nb_rooms        DECIMAL(3,1),
-    surface_m2      INT,
-    floor           INT,
-    address         TEXT,
-    city            VARCHAR(100),
-    canton          VARCHAR(2),
-    postal_code     VARCHAR(10),
-    listing_type    VARCHAR(10) DEFAULT 'rent',
-
-    enriched        JSONB DEFAULT '{}',
-    images          TEXT[] DEFAULT '{}',
-
-    first_seen_at   TIMESTAMPTZ DEFAULT NOW(),
-    is_active       BOOLEAN DEFAULT TRUE,
-
-    UNIQUE(source_id, external_id)
-);
-
-CREATE INDEX idx_listings_fingerprint ON listings(fingerprint);
-CREATE INDEX idx_listings_search ON listings(is_active, city, nb_rooms, price_chf);
-CREATE INDEX idx_listings_enriched ON listings USING GIN(enriched);
-
-CREATE TABLE users (
-    id          SERIAL PRIMARY KEY,
-    email       VARCHAR(255) UNIQUE,
-    telegram_id BIGINT UNIQUE,
-    lang        VARCHAR(2) DEFAULT 'fr',
-    plan        VARCHAR(20) DEFAULT 'free',
-    is_active   BOOLEAN DEFAULT TRUE,
-    created_at  TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE TABLE search_profiles (
-    id                 SERIAL PRIMARY KEY,
-    user_id            INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    name               VARCHAR(100),
-    listing_type       VARCHAR(10) DEFAULT 'rent',
-    cities             TEXT[],
-    cantons            VARCHAR(2)[],
-    min_rooms          DECIMAL(3,1),
-    max_rooms          DECIMAL(3,1),
-    min_price          INT,            -- EN CENTIMES
-    max_price          INT,            -- EN CENTIMES
-    min_surface        INT,
-    required_amenities TEXT[],
-    pets_required      BOOLEAN DEFAULT FALSE,
-    custom_criteria    TEXT,
-    is_active          BOOLEAN DEFAULT TRUE,
-    created_at         TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE TABLE notifications (
-    id          SERIAL PRIMARY KEY,
-    user_id     INT NOT NULL REFERENCES users(id),
-    listing_id  INT NOT NULL REFERENCES listings(id),
-    profile_id  INT NOT NULL REFERENCES search_profiles(id),
-    channel     VARCHAR(20) NOT NULL,
-    match_score DECIMAL(5,2) NOT NULL,
-    sent_at     TIMESTAMPTZ DEFAULT NOW(),
-    UNIQUE(user_id, listing_id, channel)
-);
-```
+La base refuse ce que `Listing` refuse : prix, charges, pièces et surface strictement
+positifs (absent = `NULL`, jamais `0`), canton en deux majuscules, `property_type` parmi
+les valeurs de `PropertyType`. La surface est un `DECIMAL` (45.5 m² reste 45.5), les
+booléens sont `NOT NULL`, et supprimer un abonné supprime ses profils et ses
+notifications (`ON DELETE CASCADE`). L'index de recherche est partiel (`WHERE
+is_active`) sur `canton, property_type, price_chf`.
 
 ### 4.1 Les montants sont en centimes
 
@@ -422,18 +348,20 @@ données fausses silencieusement.
   `None` et un WARNING. **1290** est Versoix (GE) **et** Chavannes-des-Bois (VD) : la
   localité tranche.
 
-  La table est **`sql/postal_codes.csv`**, aux colonnes de la future table SQL
-  `postal_codes` (`postal_code,locality,canton`, #133) : une ligne par (NPA, localité),
+  La table est **`sql/postal_codes.csv`**, aux colonnes de la table SQL `postal_codes`
+  de `sql/schema.sql` (`postal_code,locality,canton`, #62) : une ligne par (NPA, localité),
   avec le canton qui porte le plus d'adresses de la localité (colonne `Adressenanteil`) ;
   les lignes sans canton (Liechtenstein) sont ignorées. Elle est tirée de l'**open data
   swisstopo** (répertoire officiel des localités, collection STAC
   `ch.swisstopo-vd.ortschaftenverzeichnis_plz`, « Source : Office fédéral de topographie
   swisstopo ») et se rafraîchit par `python -m flatpulse.common.postal_codes` ; swisstopo
   injoignable → erreur explicite, la table garde sa version. Elle est lue une fois par
-  processus, par `postal_codes.read_table()` seulement : le passage à PostgreSQL (#133)
-  remplace cette fonction par un `SELECT`, et charge le fichier tel quel
-  (`COPY postal_codes FROM 'sql/postal_codes.csv' CSV HEADER`). Le parsing du répertoire
-  est testé sur un extrait réel figé, `tests/fixtures/swisstopo_localities.csv`.
+  processus, par `postal_codes.read_table()` seulement. La table SQL existe déjà et le
+  fichier s'y charge tel quel (`\copy postal_codes FROM 'sql/postal_codes.csv' CSV
+  HEADER`) ; brancher ce chargement à l'init (#63), le rafraîchissement et le lookup
+  dessus, puis retirer le CSV, c'est #133, qui attend la couche DB (#71) et le
+  pipeline (#64). Le parsing du répertoire est testé sur un extrait réel figé,
+  `tests/fixtures/swisstopo_localities.csv`.
   Le fichier est lu depuis le checkout du dépôt (il n'est pas dans le paquet) : `Config`
   vérifie sa présence au démarrage, pour qu'il manque au lancement et non au premier
   poll, où l'erreur ferait tomber toute la source.
