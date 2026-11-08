@@ -93,8 +93,9 @@ story au format `type(scope): description`, issue fermée avec un résumé.
 
 ## 4. Modèle de données
 
-Cinq tables, définies dans `sql/schema.sql` (#62) : `sources`, `listings`, `users`,
-`search_profiles`, `notifications`.
+Six tables, définies dans `sql/schema.sql` (#62) : `sources`, `listings`, `users`,
+`search_profiles`, `notifications`, et la table de référence `postal_codes` (NPA →
+canton, §6.1).
 
 ```sql
 CREATE TABLE sources (
@@ -183,6 +184,13 @@ CREATE TABLE notifications (
     match_score DECIMAL(5,2) NOT NULL,
     sent_at     TIMESTAMPTZ DEFAULT NOW(),
     UNIQUE(user_id, listing_id, channel)
+);
+
+CREATE TABLE postal_codes (
+    postal_code  VARCHAR(4)  NOT NULL,
+    locality     TEXT        NOT NULL,
+    canton       VARCHAR(2)  NOT NULL,
+    PRIMARY KEY (postal_code, locality)
 );
 ```
 
@@ -422,18 +430,20 @@ données fausses silencieusement.
   `None` et un WARNING. **1290** est Versoix (GE) **et** Chavannes-des-Bois (VD) : la
   localité tranche.
 
-  La table est **`sql/postal_codes.csv`**, aux colonnes de la future table SQL
-  `postal_codes` (`postal_code,locality,canton`, #133) : une ligne par (NPA, localité),
+  La table est **`sql/postal_codes.csv`**, aux colonnes de la table SQL `postal_codes`
+  de `sql/schema.sql` (`postal_code,locality,canton`, #62) : une ligne par (NPA, localité),
   avec le canton qui porte le plus d'adresses de la localité (colonne `Adressenanteil`) ;
   les lignes sans canton (Liechtenstein) sont ignorées. Elle est tirée de l'**open data
   swisstopo** (répertoire officiel des localités, collection STAC
   `ch.swisstopo-vd.ortschaftenverzeichnis_plz`, « Source : Office fédéral de topographie
   swisstopo ») et se rafraîchit par `python -m flatpulse.common.postal_codes` ; swisstopo
   injoignable → erreur explicite, la table garde sa version. Elle est lue une fois par
-  processus, par `postal_codes.read_table()` seulement : le passage à PostgreSQL (#133)
-  remplace cette fonction par un `SELECT`, et charge le fichier tel quel
-  (`COPY postal_codes FROM 'sql/postal_codes.csv' CSV HEADER`). Le parsing du répertoire
-  est testé sur un extrait réel figé, `tests/fixtures/swisstopo_localities.csv`.
+  processus, par `postal_codes.read_table()` seulement. La table SQL existe déjà et le
+  fichier s'y charge tel quel (`\copy postal_codes FROM 'sql/postal_codes.csv' CSV
+  HEADER`) ; brancher ce chargement à l'init (#63), le rafraîchissement et le lookup
+  dessus, puis retirer le CSV, c'est #133, qui attend la couche DB (#71) et le
+  pipeline (#64). Le parsing du répertoire est testé sur un extrait réel figé,
+  `tests/fixtures/swisstopo_localities.csv`.
   Le fichier est lu depuis le checkout du dépôt (il n'est pas dans le paquet) : `Config`
   vérifie sa présence au démarrage, pour qu'il manque au lancement et non au premier
   poll, où l'erreur ferait tomber toute la source.

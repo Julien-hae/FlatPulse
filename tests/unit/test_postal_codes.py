@@ -37,7 +37,7 @@ def swisstopo_response() -> MagicMock:
 
 
 class TestPostalCodes(unittest.TestCase):
-    """The table has the columns of the future `postal_codes` SQL table (#133)."""
+    """The table has the columns of the `postal_codes` SQL table (`sql/schema.sql`)."""
 
     def setUp(self) -> None:
         """A table path in a temporary directory, never the committed table."""

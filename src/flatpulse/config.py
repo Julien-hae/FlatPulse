@@ -28,4 +28,4 @@ class Config:
         self.telegram_token = os.environ["TELEGRAM_BOT_TOKEN"]
         self.log_level = os.environ.get("LOG_LEVEL", "INFO")
         self.log_format = os.environ.get("LOG_FORMAT", "text")
-        self.poll_interval = int(os.environ.get("POLL_INTERVAL_DEFAULT", "120"))
+        self.poll_interval_default = int(os.environ.get("POLL_INTERVAL_DEFAULT", "120"))

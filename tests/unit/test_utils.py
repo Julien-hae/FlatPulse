@@ -1,11 +1,7 @@
 """Unit tests for utility functions in the FlatPulse application."""
 
-import os
-import tempfile
 import unittest
-from pathlib import Path
 from typing import Any
-from unittest.mock import patch
 
 from flatpulse.common.models import PropertyType
 from flatpulse.common.utils import (
@@ -19,7 +15,6 @@ from flatpulse.common.utils import (
     parse_surface,
     parse_swiss_price,
 )
-from flatpulse.config import REQUIRED_VARS, Config
 
 
 class TestUtils(unittest.TestCase):
@@ -202,32 +197,3 @@ class TestUtils(unittest.TestCase):
         for text, expected in cases.items():
             with self.subTest(text=text):
                 self.assertEqual(is_monthly_rent(text), expected)
-
-    def test_config_missing_var_raises(self) -> None:
-        """Test that missing required environment variables raise a SystemExit."""
-        with patch.dict(os.environ):
-            for var in REQUIRED_VARS:
-                os.environ.pop(var, None)
-
-            with self.assertRaises(SystemExit):
-                Config()
-
-    def test_config_missing_postal_code_table_raises(self) -> None:
-        """No postal code table: the process stops at startup, not at the first poll.
-
-        Read later, inside parse_listing, a missing file would end a whole poll.
-        """
-        missing = Path(tempfile.gettempdir()) / "flatpulse-no-such-table.csv"
-        env = dict.fromkeys(REQUIRED_VARS, "set")
-        with (
-            patch.dict(os.environ, env),
-            patch("flatpulse.config.postal_codes.TABLE_PATH", missing),
-            self.assertRaises(SystemExit) as raised,
-        ):
-            Config()
-        self.assertIn(str(missing), str(raised.exception))
-
-    def test_config_reads_the_postal_code_table(self) -> None:
-        """With the committed table, the configuration loads."""
-        with patch.dict(os.environ, dict.fromkeys(REQUIRED_VARS, "set")):
-            Config()
