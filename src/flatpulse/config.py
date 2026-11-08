@@ -28,4 +28,15 @@ class Config:
         self.telegram_token = os.environ["TELEGRAM_BOT_TOKEN"]
         self.log_level = os.environ.get("LOG_LEVEL", "INFO")
         self.log_format = os.environ.get("LOG_FORMAT", "text")
-        self.poll_interval_default = int(os.environ.get("POLL_INTERVAL_DEFAULT", "120"))
+        self.poll_interval_default = _positive_int("POLL_INTERVAL_DEFAULT", 120)
+
+
+def _positive_int(name: str, default: int) -> int:
+    """The positive whole number in variable `name`; unset or empty, `default`.
+
+    Anything else stops the process with the variable named, never a bare ValueError.
+    """
+    raw = os.environ.get(name) or str(default)
+    if not raw.isdecimal() or int(raw) == 0:
+        raise SystemExit(f"{name} must be a positive whole number, got {raw!r}")
+    return int(raw)

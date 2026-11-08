@@ -30,6 +30,39 @@ class TestConfig(unittest.TestCase):
 
         self.assertEqual(config.log_level, "DEBUG")
 
+    def test_config_poll_interval_from_env(self) -> None:
+        """POLL_INTERVAL_DEFAULT set: its value; set but empty: the default, as if unset."""
+        cases = {"90": 90, "": 120}
+        for value, expected in cases.items():
+            with (
+                self.subTest(value=value),
+                patch.dict(
+                    os.environ,
+                    {**REQUIRED_ENV, "POLL_INTERVAL_DEFAULT": value},
+                    clear=True,
+                ),
+            ):
+                self.assertEqual(Config().poll_interval_default, expected)
+
+    def test_config_invalid_poll_interval_raises(self) -> None:
+        """Not a positive whole number of seconds: the process stops, naming the variable.
+
+        A raw ValueError would not say which variable is wrong; 0 would poll in a loop.
+        """
+        for value in ("abc", "1.5", "0", "-5"):
+            with (
+                self.subTest(value=value),
+                patch.dict(
+                    os.environ,
+                    {**REQUIRED_ENV, "POLL_INTERVAL_DEFAULT": value},
+                    clear=True,
+                ),
+                self.assertRaises(SystemExit) as raised,
+            ):
+                Config()
+            self.assertIn("POLL_INTERVAL_DEFAULT", str(raised.exception))
+            self.assertIn(repr(value), str(raised.exception))
+
     def test_config_missing_var_raises(self) -> None:
         """A required variable missing: the process stops at startup."""
         with patch.dict(os.environ, clear=True), self.assertRaises(SystemExit):

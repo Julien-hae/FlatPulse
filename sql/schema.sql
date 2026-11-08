@@ -30,7 +30,7 @@ CREATE TABLE listings (
     price_chf       INT,               -- EN CENTIMES, loyer mensuel charges comprises
     charges_chf     INT,               -- EN CENTIMES, part des charges dans price_chf
     nb_rooms        DECIMAL(3,1),
-    surface_m2      INT,
+    surface_m2      DECIMAL(7,2),      -- 45.5 m² reste 45.5, comme Listing.surface_m2
     floor           INT,               -- 0 = rez, négatif = sous-sol
     address         TEXT,
     city            VARCHAR(100),
@@ -82,9 +82,9 @@ CREATE TABLE search_profiles (
 
 CREATE TABLE notifications (
     id          SERIAL PRIMARY KEY,
-    user_id     INT NOT NULL REFERENCES users(id),
+    user_id     INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     listing_id  INT NOT NULL REFERENCES listings(id),
-    profile_id  INT NOT NULL REFERENCES search_profiles(id),
+    profile_id  INT NOT NULL REFERENCES search_profiles(id) ON DELETE CASCADE,
     channel     VARCHAR(20) NOT NULL,
     match_score DECIMAL(5,2) NOT NULL,
     sent_at     TIMESTAMPTZ DEFAULT NOW(),
