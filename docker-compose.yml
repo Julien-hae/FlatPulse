@@ -1,0 +1,59 @@
+# Environnement de dev local (#63) : PostgreSQL 16 et Redis 7, en une commande.
+#
+#   cp .env.example .env    # puis remplir POSTGRES_PASSWORD (et DATABASE_URL)
+#   docker compose up -d --wait
+#
+# Au premier lancement, quand le volume est vide, PostgreSQL applique sql/schema.sql
+# puis charge sql/postal_codes.csv dans postal_codes. Les scripts d'init ne tournent
+# plus ensuite : après une modification du schéma, repartir d'un volume vide avec
+# `docker compose down -v` (les données de dev sont perdues).
+#
+# Les ports n'écoutent que sur 127.0.0.1 : la base n'est pas exposée au réseau.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: flatpulse
+      POSTGRES_DB: flatpulse
+      # Lu dans .env (jamais en clair ici) ; sans lui, compose refuse de démarrer.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD manquant, voir .env.example}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      # Joués par ordre alphabétique, une seule fois, sur un volume vide.
+      - ./sql/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./sql/postal_codes.csv:/flatpulse/postal_codes.csv:ro
+    configs:
+      - source: load-postal-codes
+        target: /docker-entrypoint-initdb.d/02-postal-codes.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U flatpulse -d flatpulse"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    # AOF : les données survivent à un redémarrage du conteneur.
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "PING"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+configs:
+  load-postal-codes:
+    # Le CSV se charge tel quel (docs/architecture.md §6.1, #133).
+    content: |
+      COPY postal_codes FROM '/flatpulse/postal_codes.csv' WITH (FORMAT csv, HEADER);
+
+volumes:
+  postgres-data:
+  redis-data:
