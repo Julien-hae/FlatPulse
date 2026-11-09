@@ -81,7 +81,7 @@ class NaefScraper(HttpScraper):
         return TYPE_CODE_TO_PROPERTY.get(type_code)
 
     def _canton(self, node: Selector) -> str | None:
-        """Canton abbreviation; an empty `adresse_canton` is left to the pipeline."""
+        """Canton abbreviation; an empty one is deduced by HttpScraper."""
         return canton_code(self._text(node, "adresse_canton"))
 
     def _charges_chf(self, node: Selector) -> int | None:
