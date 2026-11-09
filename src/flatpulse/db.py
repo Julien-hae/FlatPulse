@@ -19,6 +19,7 @@ from datetime import datetime
 from typing import Any
 
 from psycopg import AsyncConnection, sql
+from psycopg.abc import Params, QueryNoTemplate
 from psycopg.rows import DictRow, dict_row
 from psycopg_pool import AsyncConnectionPool
 
@@ -30,7 +31,7 @@ _pool: Pool | None = None
 
 # Columns `insert_profile` accepts: those of search_profiles a profile describes.
 # id, user_id, is_active and created_at are not the caller's to set.
-PROFILE_COLUMNS = frozenset(
+_PROFILE_COLUMNS = frozenset(
     {
         "name",
         "listing_type",
@@ -80,7 +81,7 @@ _INSERT_LISTING = """
 """
 
 
-async def open_pool(database_url: str) -> Pool:
+async def open_pool(database_url: str) -> None:
     """Open the shared pool on `database_url`, waiting for its first connections.
 
     Called once at startup. An unreachable database raises `psycopg_pool.PoolTimeout`
@@ -100,7 +101,6 @@ async def open_pool(database_url: str) -> Pool:
     )
     await pool.open(wait=True)
     _pool = pool
-    return pool
 
 
 def get_pool() -> Pool:
@@ -125,6 +125,35 @@ async def close_pool() -> None:
         _pool = None
 
 
+async def _fetch_one(
+    query: QueryNoTemplate, params: Params | None = None
+) -> DictRow | None:
+    """The first row `query` returns, or None, on a connection of the shared pool."""
+    async with get_pool().connection() as conn:
+        cursor = await conn.execute(query, params)
+        return await cursor.fetchone()
+
+
+async def _execute(query: QueryNoTemplate, params: Params) -> None:
+    """Run `query`, which returns no row, on a connection of the shared pool."""
+    async with get_pool().connection() as conn:
+        await conn.execute(query, params)
+
+
+# Any: the value keeps the type of the column the caller selected.
+async def _fetch_value(query: QueryNoTemplate, params: Params) -> Any:
+    """The single column of the single row of `query`.
+
+    For queries that always yield one row (`RETURNING`, `COUNT`, `EXISTS`): a
+    missing row is a bug, raised as `RuntimeError` rather than read as a value.
+    """
+    row = await _fetch_one(query, params)
+    if row is None:
+        raise RuntimeError(f"Query returned no row: {query!r}")
+    (value,) = row.values()
+    return value
+
+
 async def insert_listing(listing: Listing, source_slug: str) -> int:
     """Store `listing` for the source `source_slug` and return its id.
 
@@ -142,8 +171,7 @@ async def insert_listing(listing: Listing, source_slug: str) -> int:
         "fingerprint": listing.fingerprint,
         "title": listing.title,
         "description": listing.description,
-        # The value ("apartment"), as the CHECK expects: psycopg would send the name.
-        "property_type": listing.property_type and listing.property_type.value,
+        "property_type": listing.property_type,
         "price_chf": listing.price_chf,
         "charges_chf": listing.charges_chf,
         "nb_rooms": listing.nb_rooms,
@@ -155,9 +183,7 @@ async def insert_listing(listing: Listing, source_slug: str) -> int:
         "postal_code": listing.postal_code,
         "images": list(listing.images),  # a list is a PostgreSQL array, a tuple not
     }
-    async with get_pool().connection() as conn:
-        cursor = await conn.execute(_INSERT_LISTING, params)
-        row = await cursor.fetchone()
+    row = await _fetch_one(_INSERT_LISTING, params)
     if row is None:
         raise LookupError(
             f"Unknown source {source_slug!r}: no row in sources has this slug "
@@ -178,7 +204,6 @@ async def get_active_profiles() -> list[dict[str, Any]]:
             FROM search_profiles sp
             JOIN users u ON u.id = sp.user_id
             WHERE sp.is_active AND u.is_active
-            ORDER BY sp.id
             """
         )
         return await cursor.fetchall()
@@ -192,48 +217,42 @@ async def insert_notification(
     A notification already recorded for this user, listing and channel is left as
     it is: recording it twice is not an error.
     """
-    async with get_pool().connection() as conn:
-        await conn.execute(
-            """
-            INSERT INTO notifications
-                (user_id, listing_id, profile_id, channel, match_score)
-            VALUES (%s, %s, %s, %s, %s)
-            ON CONFLICT (user_id, listing_id, channel) DO NOTHING
-            """,
-            (user_id, listing_id, profile_id, channel, score),
-        )
+    await _execute(
+        """
+        INSERT INTO notifications
+            (user_id, listing_id, profile_id, channel, match_score)
+        VALUES (%s, %s, %s, %s, %s)
+        ON CONFLICT (user_id, listing_id, channel) DO NOTHING
+        """,
+        (user_id, listing_id, profile_id, channel, score),
+    )
 
 
 async def check_notification_exists(
     user_id: int, listing_id: int, channel: str
 ) -> bool:
     """Whether `listing_id` was already sent to `user_id` on `channel`."""
-    async with get_pool().connection() as conn:
-        cursor = await conn.execute(
+    return bool(
+        await _fetch_value(
             """
             SELECT EXISTS (
                 SELECT 1 FROM notifications
                 WHERE user_id = %s AND listing_id = %s AND channel = %s
-            ) AS exists
+            )
             """,
             (user_id, listing_id, channel),
         )
-        row = await cursor.fetchone()
-    return row is not None and bool(row["exists"])
+    )
 
 
 async def count_notifications_since(user_id: int, since: datetime) -> int:
     """How many notifications `user_id` received from `since` on, all channels."""
-    async with get_pool().connection() as conn:
-        cursor = await conn.execute(
-            """
-            SELECT COUNT(*) AS count FROM notifications
-            WHERE user_id = %s AND sent_at >= %s
-            """,
+    return int(
+        await _fetch_value(
+            "SELECT COUNT(*) FROM notifications WHERE user_id = %s AND sent_at >= %s",
             (user_id, since),
         )
-        row = await cursor.fetchone()
-    return 0 if row is None else int(row["count"])
+    )
 
 
 async def upsert_user(telegram_id: int, email: str | None, lang: str) -> int:
@@ -242,8 +261,8 @@ async def upsert_user(telegram_id: int, email: str | None, lang: str) -> int:
     A known user gets the new `lang`; their email is replaced only by a non-null
     one, so a `/start` without email keeps the address given earlier.
     """
-    async with get_pool().connection() as conn:
-        cursor = await conn.execute(
+    return int(
+        await _fetch_value(
             """
             INSERT INTO users (telegram_id, email, lang)
             VALUES (%s, %s, %s)
@@ -254,22 +273,21 @@ async def upsert_user(telegram_id: int, email: str | None, lang: str) -> int:
             """,
             (telegram_id, email, lang),
         )
-        row = await cursor.fetchone()
-    if row is None:  # RETURNING always yields the row inserted or updated
-        raise RuntimeError(f"upsert_user returned no id for {telegram_id}")
-    return int(row["id"])
+    )
 
 
 async def insert_profile(user_id: int, profile_data: Mapping[str, object]) -> int:
     """Create a search profile for `user_id` from `profile_data`; return its id.
 
-    `profile_data` maps columns of `search_profiles` (see `PROFILE_COLUMNS`) to
-    their values; a column left out takes its default. Prices are in centimes.
+    `profile_data` maps columns of `search_profiles` to their values: name,
+    listing_type, cities, cantons, min_rooms, max_rooms, min_price, max_price
+    (centimes), min_surface, required_amenities, pets_required, custom_criteria. A
+    column left out takes its default.
 
     Raises:
-        ValueError: A key of `profile_data` is not in `PROFILE_COLUMNS`.
+        ValueError: A key of `profile_data` is not one of these columns.
     """
-    unknown = sorted(set(profile_data) - PROFILE_COLUMNS)
+    unknown = sorted(set(profile_data) - _PROFILE_COLUMNS)
     if unknown:
         raise ValueError(f"Unknown search profile columns: {', '.join(unknown)}")
     columns = ["user_id", *profile_data]
@@ -277,9 +295,4 @@ async def insert_profile(user_id: int, profile_data: Mapping[str, object]) -> in
         sql.SQL(", ").join(map(sql.Identifier, columns)),
         sql.SQL(", ").join(sql.Placeholder() * len(columns)),
     )
-    async with get_pool().connection() as conn:
-        cursor = await conn.execute(query, [user_id, *profile_data.values()])
-        row = await cursor.fetchone()
-    if row is None:  # RETURNING always yields the inserted row
-        raise RuntimeError(f"insert_profile returned no id for user {user_id}")
-    return int(row["id"])
+    return int(await _fetch_value(query, [user_id, *profile_data.values()]))

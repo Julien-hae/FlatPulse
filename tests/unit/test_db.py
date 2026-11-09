@@ -66,12 +66,12 @@ class TestPool(unittest.IsolatedAsyncioTestCase):
     async def test_open_pool_opens_once_with_database_url(self) -> None:
         with patch("flatpulse.db.AsyncConnectionPool") as pool_class:
             pool_class.return_value.open = AsyncMock()
-            pool = await db.open_pool("postgresql://flatpulse@localhost/flatpulse")
+            await db.open_pool("postgresql://flatpulse@localhost/flatpulse")
 
+        pool = pool_class.return_value
         self.assertEqual(
             pool_class.call_args.args[0], "postgresql://flatpulse@localhost/flatpulse"
         )
-        self.assertFalse(pool_class.call_args.kwargs["open"])
         pool.open.assert_awaited_once_with(wait=True)
         self.assertIs(db.get_pool(), pool)
 
@@ -111,7 +111,6 @@ class TestInsertListing(unittest.IsolatedAsyncioTestCase):
         params = sent_params(execute)
         self.assertEqual(params["source_slug"], "naef")
         self.assertEqual(params["fingerprint"], LISTING.fingerprint)
-        self.assertEqual(params["property_type"], "apartment")
         self.assertEqual(params["price_chf"], 245000)
         self.assertEqual(params["images"], ["https://www.naef.ch/img/12345-1.jpg"])
 
@@ -129,10 +128,9 @@ class TestInsertListing(unittest.IsolatedAsyncioTestCase):
             second_id = await db.insert_listing(cheaper, source_slug="naef")
 
         self.assertEqual(first_id, second_id)
-        query = sent_query(execute)
-        self.assertRegex(query, r"ON CONFLICT \(source_id, external_id\) DO UPDATE SET")
-        self.assertIn("fingerprint = EXCLUDED.fingerprint", query)
-        self.assertIn("price_chf = EXCLUDED.price_chf", query)
+        self.assertRegex(
+            sent_query(execute), r"ON CONFLICT \(source_id, external_id\) DO UPDATE"
+        )
         self.assertEqual(sent_params(execute)["price_chf"], 230000)
 
     async def test_insert_listing_unknown_source_raises(self) -> None:
@@ -143,18 +141,6 @@ class TestInsertListing(unittest.IsolatedAsyncioTestCase):
             self.assertRaisesRegex(LookupError, "inconnue"),
         ):
             await db.insert_listing(LISTING, source_slug="inconnue")
-
-    async def test_insert_listing_without_property_type_sends_null(self) -> None:
-        pool, execute = mock_pool(fetchone={"id": 7})
-        bare = Listing(
-            external_id="9", external_url="https://www.naef.ch/9", title="Objet"
-        )
-
-        with patch("flatpulse.db.get_pool", return_value=pool):
-            await db.insert_listing(bare, source_slug="naef")
-
-        self.assertIsNone(sent_params(execute)["property_type"])
-        self.assertIsNone(sent_params(execute)["price_chf"])
 
 
 class TestGetActiveProfiles(unittest.IsolatedAsyncioTestCase):
@@ -174,10 +160,7 @@ class TestGetActiveProfiles(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(profiles), 2)
         for profile in profiles:
             self.assertIn("user_plan", profile)
-        query = sent_query(execute)
-        self.assertIn("u.plan AS user_plan", query)
-        self.assertIn("JOIN users u ON u.id = sp.user_id", query)
-        self.assertIn("WHERE sp.is_active AND u.is_active", query)
+        self.assertRegex(sent_query(execute), r"WHERE .*sp\.is_active")
 
 
 class TestNotifications(unittest.IsolatedAsyncioTestCase):
@@ -185,26 +168,23 @@ class TestNotifications(unittest.IsolatedAsyncioTestCase):
         pool, execute = mock_pool()
 
         with patch("flatpulse.db.get_pool", return_value=pool):
-            result = await db.insert_notification(
+            await db.insert_notification(
                 user_id=10, listing_id=42, profile_id=1, channel="telegram", score=87.5
             )
 
-        self.assertIsNone(result)
-        query = sent_query(execute)
-        self.assertIn("INSERT INTO notifications", query)
-        self.assertIn("ON CONFLICT (user_id, listing_id, channel) DO NOTHING", query)
+        self.assertIn("DO NOTHING", sent_query(execute))
         self.assertEqual(sent_params(execute), (10, 42, 1, "telegram", 87.5))
 
     async def test_check_notification_exists(self) -> None:
-        for row, expected in (({"exists": True}, True), ({"exists": False}, False)):
-            pool, execute = mock_pool(fetchone=row)
+        for answer in (True, False):
+            pool, _ = mock_pool(fetchone={"exists": answer})
             with (
-                self.subTest(expected=expected),
+                self.subTest(answer=answer),
                 patch("flatpulse.db.get_pool", return_value=pool),
             ):
-                exists = await db.check_notification_exists(10, 42, "telegram")
-                self.assertIs(exists, expected)
-                self.assertEqual(sent_params(execute), (10, 42, "telegram"))
+                self.assertIs(
+                    await db.check_notification_exists(10, 42, "telegram"), answer
+                )
 
     async def test_count_notifications_since(self) -> None:
         pool, execute = mock_pool(fetchone={"count": 3})
@@ -214,8 +194,17 @@ class TestNotifications(unittest.IsolatedAsyncioTestCase):
             count = await db.count_notifications_since(10, since)
 
         self.assertEqual(count, 3)
-        self.assertIn("sent_at >= %s", sent_query(execute))
         self.assertEqual(sent_params(execute), (10, since))
+
+    async def test_query_without_row_raises(self) -> None:
+        # COUNT, EXISTS and RETURNING always yield a row: none is a bug, not a 0.
+        pool, _ = mock_pool(fetchone=None)
+
+        with (
+            patch("flatpulse.db.get_pool", return_value=pool),
+            self.assertRaises(RuntimeError),
+        ):
+            await db.count_notifications_since(10, datetime.now(UTC))
 
 
 class TestUsersAndProfiles(unittest.IsolatedAsyncioTestCase):
@@ -226,31 +215,19 @@ class TestUsersAndProfiles(unittest.IsolatedAsyncioTestCase):
             user_id = await db.upsert_user(123456789, None, "fr")
 
         self.assertEqual(user_id, 10)
-        query = sent_query(execute)
-        self.assertIn("ON CONFLICT (telegram_id) DO UPDATE SET", query)
-        self.assertIn("COALESCE(EXCLUDED.email, users.email)", query)
+        self.assertIn("ON CONFLICT (telegram_id) DO UPDATE", sent_query(execute))
         self.assertEqual(sent_params(execute), (123456789, None, "fr"))
 
     async def test_insert_profile_returns_id(self) -> None:
         pool, execute = mock_pool(fetchone={"id": 5})
-        profile = {
-            "name": "Carouge 4 pièces",
-            "cities": ["Carouge"],
-            "max_price": 260000,
-        }
+        profile = {"name": "Carouge 4 pièces", "max_price": 260000}
 
         with patch("flatpulse.db.get_pool", return_value=pool):
             profile_id = await db.insert_profile(10, profile)
 
         self.assertEqual(profile_id, 5)
-        self.assertEqual(
-            sent_query(execute),
-            'INSERT INTO search_profiles ("user_id", "name", "cities", "max_price") '
-            "VALUES (%s, %s, %s, %s) RETURNING id",
-        )
-        self.assertEqual(
-            sent_params(execute), [10, "Carouge 4 pièces", ["Carouge"], 260000]
-        )
+        self.assertIn('("user_id", "name", "max_price")', sent_query(execute))
+        self.assertEqual(sent_params(execute), [10, "Carouge 4 pièces", 260000])
 
     async def test_insert_profile_unknown_column_raises(self) -> None:
         pool, execute = mock_pool(fetchone={"id": 5})

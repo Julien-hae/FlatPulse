@@ -39,9 +39,9 @@ LISTING = Listing(
 )
 class TestDatabaseLayer(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self) -> None:
-        pool = await db.open_pool(TEST_DATABASE_URL)
+        await db.open_pool(TEST_DATABASE_URL)
         self.addAsyncCleanup(db.close_pool)
-        async with pool.connection() as conn:
+        async with db.get_pool().connection() as conn:
             await conn.execute(
                 "TRUNCATE notifications, search_profiles, users, listings, sources "
                 "RESTART IDENTITY CASCADE"
@@ -97,9 +97,10 @@ class TestDatabaseLayer(unittest.IsolatedAsyncioTestCase):
 
         profiles = await db.get_active_profiles()
 
-        self.assertEqual([p["name"] for p in profiles], ["Carouge", "Onex"])
+        by_name = {p["name"]: p for p in profiles}
+        self.assertEqual(sorted(by_name), ["Carouge", "Onex"])
         self.assertEqual({p["user_plan"] for p in profiles}, {"free"})
-        self.assertEqual(profiles[0]["cities"], ["Carouge"])
+        self.assertEqual(by_name["Carouge"]["cities"], ["Carouge"])
 
     async def test_get_active_profiles_excludes_inactive_users(self) -> None:
         user_id = await db.upsert_user(222, None, "fr")
