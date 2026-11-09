@@ -5,6 +5,8 @@ import zipfile
 from pathlib import Path
 from unittest.mock import MagicMock
 
+from flatpulse.common.postal_codes import CantonLookup, rows_from_swisstopo
+
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
 
@@ -31,3 +33,10 @@ def swisstopo_response() -> MagicMock:
     response = MagicMock(content=archive.getvalue())
     response.raise_for_status.return_value = None
     return response
+
+
+# The postal code table every scraper test runs with: the extract holds the postal
+# codes of the fixtures, so the scrapers deduce their cantons as in production.
+CANTON_LOOKUP = CantonLookup(
+    rows_from_swisstopo(SWISSTOPO_EXTRACT.read_text(encoding="utf-8-sig"))
+)

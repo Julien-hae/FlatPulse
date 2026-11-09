@@ -168,7 +168,9 @@ distribution/
 **`AbstractScraper`** (ABC) expose `fetch_listings() -> list[Listing]` (abstraite) et
 `run()` (concrète : rate limit → fetch → retour). On n'override pas `run()`.
 
-**`HttpScraper`** implémente le fetch HTTP + parsing `parsel.Selector`. C'est la seule
+**`HttpScraper`** implémente le fetch HTTP + parsing `parsel.Selector`. Il reçoit à la
+construction un `RateLimiter` et un `CantonLookup` (§6.1), et complète le canton absent
+de chaque annonce depuis son NPA. C'est la seule
 implémentation nécessaire : le spike a confirmé qu'aucune des 13 régies analysées ne
 requiert un navigateur headless. Les sources « JS-rendered » (Naef, Bory, Rosset,
 Bernard Nicod) exposent toutes un endpoint JSON ou un état hydraté qu'on lit directement.
@@ -285,7 +287,7 @@ dedup `(user_id, listing_id, channel)` avant d'envoyer, applique le throttling p
 ### 5.5 Pipeline (#64)
 
 Boucle asyncio : pour chaque source, scrape → dedup → puis, par nouveau listing,
-canton complété depuis le NPA (§6.1) → enrich → match → dispatch. Arrêt propre sur SIGTERM/SIGINT. **L'erreur d'une source
+enrich → match → dispatch. Arrêt propre sur SIGTERM/SIGINT. **L'erreur d'une source
 n'affecte jamais les autres** : un site down ne bloque pas le pipeline. Un doublon
 court-circuite avant l'enrichissement, pour ne pas consommer de quota LLM.
 
@@ -343,11 +345,14 @@ données fausses silencieusement.
   source pour typer une annonce : ils sont parfois ignorés côté serveur.
 - **Canton** tantôt en toutes lettres, tantôt en code, parfois absent (Naef : un quart
   des annonces ; Burger : jamais écrit). La colonne est un `VARCHAR(2)` : normaliser.
-  **Le scraper ne renseigne `canton` que si la source l'écrit** (Naef `adresse_canton`,
-  Comptoir en-tête) ; sinon `None`, avec `postal_code` et `city` tels que publiés. Le
-  pipeline le complète ensuite depuis le NPA (#133), entre Dedup et Enrich :
-  `postal_codes.fill_missing_canton(listing, lookup)` garde un canton écrit par la
-  source et ne fait que combler un trou. Le canton n'est jamais deviné : un NPA inconnu,
+  **Chaque `Listing` sort du scraper avec son canton, comme avec son NPA.** Un canton
+  écrit par la source (Naef `adresse_canton`, Comptoir en-tête) est gardé tel quel ;
+  absent, il se déduit du NPA et de la ville. La déduction n'est écrite dans aucun
+  `parse_listing` : `HttpScraper._parse_or_skip()` applique
+  `postal_codes.fill_missing_canton(listing, canton_lookup)` à chaque annonce, donc une
+  nouvelle régie en hérite sans une ligne. Le `CantonLookup` est passé au scraper à la
+  construction, comme le `RateLimiter` (paramètre obligatoire). Le canton n'est jamais
+  deviné : un NPA inconnu,
   ou partagé entre cantons sans localité reconnue, donne `None` et un WARNING. **1290**
   est Versoix (GE) **et** Chavannes-des-Bois (VD) : la localité tranche, sans la casse.
 
@@ -360,9 +365,11 @@ données fausses silencieusement.
   remplit sur une base neuve et la rafraîchit ensuite : téléchargement d'abord, puis
   `TRUNCATE` + `COPY` dans une seule transaction. swisstopo injoignable → erreur
   explicite avant toute écriture ; une ligne refusée annule le `TRUNCATE` : la table
-  n'est jamais vide ni à moitié écrite. Le pipeline la lit une fois au démarrage
-  (`CantonLookup.load()`, un `SELECT` gardé en mémoire), et refuse de démarrer si elle
-  est vide. Le parsing du répertoire est testé sur un extrait réel figé,
+  n'est jamais vide ni à moitié écrite. Le pipeline (#64) la lit une fois au démarrage
+  (`CantonLookup.load()`, un `SELECT` gardé en mémoire) et la passe aux scrapers ; il
+  refuse de démarrer si elle est vide. Les tests de scrapers utilisent un
+  `CantonLookup` construit sur l'extrait swisstopo figé (`tests/helpers.py`), l'audit
+  live un `CantonLookup` téléchargé depuis swisstopo. Le parsing du répertoire est testé sur un extrait réel figé,
   `tests/fixtures/swisstopo_localities.csv` ; le rafraîchissement, sur un vrai
   PostgreSQL (`tests/integration/test_postal_codes.py`).
 

@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, patch
 from flatpulse.common.models import Listing
 from flatpulse.scrapers.base import HttpScraper
 from flatpulse.scrapers.rate_limiter import RateLimiter
-from tests.helpers import response_from_fixture
+from tests.helpers import CANTON_LOOKUP, response_from_fixture
 
 
 class ScraperContractMixin:
@@ -23,7 +23,9 @@ class ScraperContractMixin:
 
     def new_scraper(self) -> HttpScraper:
         """A fresh scraper with its own mocked limiter."""
-        return self.scraper_class(rate_limiter=AsyncMock(spec=RateLimiter))
+        return self.scraper_class(
+            rate_limiter=AsyncMock(spec=RateLimiter), canton_lookup=CANTON_LOOKUP
+        )
 
     async def fetch_from_fixture(self) -> list[Listing]:
         """Run a fresh scraper against the frozen fixture."""

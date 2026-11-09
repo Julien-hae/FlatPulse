@@ -16,7 +16,7 @@ from flatpulse.scrapers.base import (
 )
 from flatpulse.scrapers.rate_limiter import RateLimiter
 from tests.contract.test_scraper_contract import ScraperContractMixin
-from tests.helpers import response_from_fixture
+from tests.helpers import CANTON_LOOKUP, response_from_fixture
 
 
 class MinimalScraper(HttpScraper):
@@ -48,6 +48,16 @@ class AlternatingInvalidScraper(MinimalScraper):
         return listing
 
 
+class PostalCodeScraper(MinimalScraper):
+    """Scraper test double publishing a postal code, and a canton for listing 102."""
+
+    def parse_listing(self, node: Selector) -> Listing:
+        listing = replace(super().parse_listing(node), postal_code="1206")
+        if listing.external_id == "102":
+            return replace(listing, canton="VD")
+        return listing
+
+
 class TestMinimalScraperContract(
     ScraperContractMixin, unittest.IsolatedAsyncioTestCase
 ):
@@ -62,7 +72,9 @@ class TestHttpScraper(unittest.IsolatedAsyncioTestCase):
 
     def setUp(self) -> None:
         """A fresh scraper per test, with a mocked limiter so nothing waits."""
-        self.scraper = MinimalScraper(rate_limiter=AsyncMock(spec=RateLimiter))
+        self.scraper = MinimalScraper(
+            rate_limiter=AsyncMock(spec=RateLimiter), canton_lookup=CANTON_LOOKUP
+        )
 
     @patch("httpx.AsyncClient.get", new_callable=AsyncMock)
     async def test_fetch_returns_listings_with_required_fields(
@@ -116,7 +128,9 @@ class TestHttpScraper(unittest.IsolatedAsyncioTestCase):
     ) -> None:
         """The pipeline never falls because of one link (CLAUDE.md): skip and log."""
         mock_get.return_value = response_from_fixture("sample_listing.html")
-        scraper = AlternatingInvalidScraper(rate_limiter=AsyncMock(spec=RateLimiter))
+        scraper = AlternatingInvalidScraper(
+            rate_limiter=AsyncMock(spec=RateLimiter), canton_lookup=CANTON_LOOKUP
+        )
 
         with self.assertLogs("flatpulse.scrapers.base", level="WARNING") as captured:
             result = await scraper.fetch_listings()
@@ -128,7 +142,9 @@ class TestHttpScraper(unittest.IsolatedAsyncioTestCase):
 
     async def test_run_does_not_sleep(self) -> None:
         """run delegates to fetch_listings without a separate delay."""
-        scraper = MinimalScraper(rate_limiter=AsyncMock(spec=RateLimiter))
+        scraper = MinimalScraper(
+            rate_limiter=AsyncMock(spec=RateLimiter), canton_lookup=CANTON_LOOKUP
+        )
         with (
             patch.object(
                 scraper, "fetch_listings", new_callable=AsyncMock, return_value=[]
@@ -154,7 +170,9 @@ class TestHttpScraper(unittest.IsolatedAsyncioTestCase):
             mock_get.return_value = response_from_fixture("sample_listing.html")
             manager.attach_mock(limiter.acquire, "acquire")
             manager.attach_mock(mock_get, "get")
-            await MinimalScraper(rate_limiter=limiter).fetch_listings()
+            await MinimalScraper(
+                rate_limiter=limiter, canton_lookup=CANTON_LOOKUP
+            ).fetch_listings()
 
         requests = [c for c in manager.mock_calls if c[0] in ("acquire", "get")]
         self.assertEqual(
@@ -311,3 +329,24 @@ class TestScraperContract(unittest.TestCase):
             canton="GE",
         )
         self.assertEqual(listing.canton, "GE")
+
+
+class TestCantonFromPostalCode(unittest.IsolatedAsyncioTestCase):
+    """Every HttpScraper completes a canton the source leaves out (#133)."""
+
+    @patch("httpx.AsyncClient.get", new_callable=AsyncMock)
+    async def test_missing_canton_is_read_from_postal_code(
+        self, mock_get: AsyncMock
+    ) -> None:
+        """1206 is GE; a canton written by the source is kept as is."""
+        mock_get.return_value = response_from_fixture("sample_listing.html")
+        scraper = PostalCodeScraper(
+            rate_limiter=AsyncMock(spec=RateLimiter), canton_lookup=CANTON_LOOKUP
+        )
+
+        listings = await scraper.fetch_listings()
+
+        cantons = {listing.external_id: listing.canton for listing in listings}
+        self.assertEqual(cantons.pop("102"), "VD")
+        self.assertTrue(cantons)
+        self.assertEqual(set(cantons.values()), {"GE"})

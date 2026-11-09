@@ -10,7 +10,7 @@ from flatpulse.common.models import Listing, PropertyType
 from flatpulse.scrapers.rate_limiter import RateLimiter
 from flatpulse.scrapers.sources.burger import BurgerScraper
 from tests.contract.test_scraper_contract import ScraperContractMixin
-from tests.helpers import response_from_fixture
+from tests.helpers import CANTON_LOOKUP, response_from_fixture
 
 LOUER = "https://www.burger-sa.ch/fr/louer/"
 MONT_BLANC = LOUER + "geneve-magnifique-appartement-de-5-pieces-br-rue-du-mont-bla"
@@ -43,7 +43,9 @@ class TestBurgerScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
 
     def new_scraper(self) -> BurgerScraper:
         """A fresh BurgerScraper, typed as such: its parse_listing also takes the URL."""
-        return BurgerScraper(rate_limiter=AsyncMock(spec=RateLimiter))
+        return BurgerScraper(
+            rate_limiter=AsyncMock(spec=RateLimiter), canton_lookup=CANTON_LOOKUP
+        )
 
     async def fetch_from_fixture(self) -> list[Listing]:
         """Serve the sitemap, then its rental fiches."""
@@ -150,21 +152,21 @@ class TestBurgerScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
                 "address": "Rue Emile-Yung 3 bis",
                 "postal_code": "1205",
                 "city": "Genève",
+                "canton": "GE",
             },
         )
 
-    async def test_burger_postal_code_without_canton(self) -> None:
-        """The « NPA localité » line gives the postal code; Burger never writes the
-        canton, the pipeline completes it from the postal code (#133)."""
+    async def test_burger_postal_code_and_canton(self) -> None:
+        """The « NPA localité » line gives the postal code, and the code the canton."""
         cases = {
-            "geneve-appartement-de-3-pieces-au-2eme-etage": "1206",
-            "le-lignon-parking-interne-au-1er-sous-sol": "1219",
-            "veyrier-veyrierbr-depot-a-louer": "1255",
+            "geneve-appartement-de-3-pieces-au-2eme-etage": ("1206", "GE"),
+            "le-lignon-parking-interne-au-1er-sous-sol": ("1219", "GE"),
+            "veyrier-veyrierbr-depot-a-louer": ("1255", "GE"),
         }
-        for slug, postal_code in cases.items():
+        for slug, (postal_code, canton) in cases.items():
             with self.subTest(slug=slug):
                 await self.assert_listing(
-                    LOUER + slug, {"postal_code": postal_code, "canton": None}
+                    LOUER + slug, {"postal_code": postal_code, "canton": canton}
                 )
 
     def test_burger_no_charges_without_rent(self) -> None:
@@ -315,7 +317,7 @@ class TestBurgerScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
     async def test_burger_acquires_before_sitemap_and_each_fiche(self) -> None:
         """Await a token before the sitemap GET and each of the eleven fiche GETs."""
         limiter = AsyncMock(spec=RateLimiter)
-        scraper = BurgerScraper(rate_limiter=limiter)
+        scraper = BurgerScraper(rate_limiter=limiter, canton_lookup=CANTON_LOOKUP)
         manager = Mock()
         urls = [
             BurgerScraper.base_url,

@@ -9,6 +9,7 @@ import httpx
 from parsel import Selector
 
 from flatpulse.common.models import Listing
+from flatpulse.common.postal_codes import CantonLookup, fill_missing_canton
 from flatpulse.scrapers.rate_limiter import RateLimiter
 
 logger = logging.getLogger(__name__)
@@ -36,9 +37,14 @@ class HttpScraper(AbstractScraper):
     base_url: str
     slug: str
 
-    def __init__(self, rate_limiter: RateLimiter) -> None:
-        """Keep the limiter that paces every request of this source (`slug`)."""
+    def __init__(self, rate_limiter: RateLimiter, canton_lookup: CantonLookup) -> None:
+        """Keep the request limiter of this source and the postal code table.
+
+        The limiter paces every request of `slug`; the table completes a canton the
+        source leaves out. Neither has a default: the pipeline builds both.
+        """
         self.rate_limiter = rate_limiter
+        self.canton_lookup = canton_lookup
 
     @abstractmethod
     def listing_nodes(self, page: Selector) -> list[Selector]:
@@ -77,15 +83,16 @@ class HttpScraper(AbstractScraper):
                 listings.append(listing)
         return listings
 
-    @staticmethod
-    def _parse_or_skip(parse: Callable[[], Listing]) -> Listing | None:
+    def _parse_or_skip(self, parse: Callable[[], Listing]) -> Listing | None:
         """Run `parse`; an invalid listing is logged and skipped, the poll goes on.
 
-        The ValueError names the faulty field and the listing's URL, so the node
-        itself (HTML or JSON) is not read again here.
+        A canton the source does not write is completed from the postal code and
+        city, here, so every scraper gets it without writing a line. The ValueError
+        names the faulty field and the listing's URL, so the node itself (HTML or
+        JSON) is not read again here.
         """
         try:
-            return parse()
+            return fill_missing_canton(parse(), self.canton_lookup)
         except ValueError as error:
             logger.warning(SKIPPED_INVALID_LISTING, error)
             return None

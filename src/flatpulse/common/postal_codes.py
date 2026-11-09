@@ -7,9 +7,9 @@ swisstopo ») and refreshed, or filled on a new database, by running this module
 
     python -m flatpulse.common.postal_codes
 
-Scrapers report the canton only when the agency writes it. The pipeline completes a
-missing one from the postal code with `fill_missing_canton`, using a `CantonLookup`
-loaded once per process.
+Every scraper completes a canton the agency leaves out from the postal code
+(`fill_missing_canton`, applied by `HttpScraper`), with a `CantonLookup` loaded once
+per process from the table and handed to the scrapers at construction.
 """
 
 import asyncio
@@ -144,8 +144,7 @@ class CantonLookup:
 def fill_missing_canton(listing: Listing, lookup: CantonLookup) -> Listing:
     """`listing` with its canton completed from its postal code and city.
 
-    The pipeline step between dedup and enrichment: a canton written by the source
-    is kept as is, the postal code only fills a gap.
+    A canton written by the source is kept as is: the postal code only fills a gap.
     """
     if listing.canton is not None:
         return listing
