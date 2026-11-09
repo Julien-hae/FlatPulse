@@ -358,8 +358,8 @@ données fausses silencieusement.
   injoignable → erreur explicite, la table garde sa version. Elle est lue une fois par
   processus, par `postal_codes.read_table()` seulement. La table SQL existe déjà et le
   fichier s'y charge tel quel (`\copy postal_codes FROM 'sql/postal_codes.csv' CSV
-  HEADER`) ; brancher ce chargement à l'init (#63), le rafraîchissement et le lookup
-  dessus, puis retirer le CSV, c'est #133, qui attend la couche DB (#71) et le
+  HEADER`) ; `docker compose up` l'y charge à l'init (#63). Brancher le
+  rafraîchissement et le lookup dessus, puis retirer le CSV, c'est #133, qui attend la couche DB (#71) et le
   pipeline (#64). Le parsing du répertoire est testé sur un extrait réel figé,
   `tests/fixtures/swisstopo_localities.csv`.
   Le fichier est lu depuis le checkout du dépôt (il n'est pas dans le paquet) : `Config`
@@ -592,9 +592,9 @@ d'implémenter les stories concernées.
    `aiosmtplib`, `prometheus-client`, `alembic` — à ajouter par la story qui les
    introduit, pas en bloc (YAGNI). `numpy` est un reliquat du template : à retirer s'il
    ne sert à rien.
-8. **Redis.** Prévu dans le docker-compose (#63) et l'infra, mais le MVP fonctionne avec
-   des dicts en mémoire (rate limiter, dedup, cache LLM). Ne le brancher que quand le
-   multi-worker l'impose.
+8. **Redis.** Lancé par le `docker-compose.yml` (#63), mais le MVP fonctionne avec des
+   dicts en mémoire (rate limiter, dedup, cache LLM) et aucun code ne s'y connecte. Ne le
+   brancher que quand le multi-worker l'impose.
 9. **Débit des scrapers multi-requêtes.** *Tranché le 05.11.2026 (#121) :* chaque
    requête HTTP doit attendre `RateLimiter.acquire(slug)`, avec le `rate_limit_rpm` de sa
    source. Le bucket a une capacité de 1 et un jeton initial : à 6 rpm (Crawl-delay de
@@ -621,3 +621,7 @@ d'implémenter les stories concernées.
     `listing: dict` (dedup, enrichissement, matching, notification). Depuis #114, les
     scrapers produisent des `Listing` : lire ces stories avec `listing: Listing`, accès
     par attribut (`listing.price_chf`) et non par clé.
+12. **Six tables, pas cinq.** Le test manuel de #63 attend « les 5 tables » de `\dt`.
+    Depuis #133, `sql/schema.sql` en crée six (`postal_codes` en plus), et
+    `docker compose up` y charge `sql/postal_codes.csv` (4 060 lignes) : `\dt` en liste
+    six. La story est à corriger.

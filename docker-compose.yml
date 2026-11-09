@@ -1,0 +1,43 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: flatpulse
+      POSTGRES_DB: flatpulse
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD manquant, voir .env.example}
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./sql/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./sql/postal_codes.csv:/flatpulse/postal_codes.csv:ro
+    configs:
+      - source: load-postal-codes
+        target: /docker-entrypoint-initdb.d/02-postal-codes.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U flatpulse -d flatpulse"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "PING"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+configs:
+  load-postal-codes:
+    content: |
+      COPY postal_codes FROM '/flatpulse/postal_codes.csv' WITH (FORMAT csv, HEADER);
+
+volumes:
+  postgres-data:
+  redis-data:
