@@ -1,53 +1,31 @@
-"""Unit tests for the postal code table and its refresh from swisstopo's open data."""
+"""Unit tests for the postal code table: swisstopo parsing, canton lookup, completion."""
 
-import io
-import tempfile
+import os
 import unittest
-import zipfile
-from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
-import httpx
-
+from flatpulse.common.models import Listing
 from flatpulse.common.postal_codes import (
-    COLUMNS,
-    TABLE_PATH,
+    CantonLookup,
     PostalCode,
+    fill_missing_canton,
     main,
-    read_table,
     rows_from_swisstopo,
 )
-from tests.helpers import FIXTURES_DIR
-
-# Unchanged rows of swisstopo's directory of 01.11.2026: the postal codes of the
-# fixtures, 1290 (Versoix GE, Chavannes-des-Bois VD) and 9485 (Liechtenstein).
-SWISSTOPO_EXTRACT = FIXTURES_DIR / "swisstopo_localities.csv"
+from tests.helpers import SWISSTOPO_EXTRACT
 
 
-def swisstopo_response() -> MagicMock:
-    """The extract zipped as swisstopo serves its directory."""
-    archive = io.BytesIO()
-    with zipfile.ZipFile(archive, "w") as zipped:
-        zipped.writestr(
-            "AMTOVZ_CSV_LV95/AMTOVZ_CSV_LV95.csv", SWISSTOPO_EXTRACT.read_bytes()
-        )
-    response = MagicMock(content=archive.getvalue())
-    response.raise_for_status.return_value = None
-    return response
+def extract_rows() -> list[PostalCode]:
+    """The table rows of the swisstopo extract."""
+    return rows_from_swisstopo(SWISSTOPO_EXTRACT.read_text(encoding="utf-8-sig"))
 
 
-class TestPostalCodes(unittest.TestCase):
-    """The table has the columns of the `postal_codes` SQL table (`sql/schema.sql`)."""
-
-    def setUp(self) -> None:
-        """A table path in a temporary directory, never the committed table."""
-        directory = tempfile.TemporaryDirectory()
-        self.addCleanup(directory.cleanup)
-        self.table = Path(directory.name) / "postal_codes.csv"
+class TestRowsFromSwisstopo(unittest.TestCase):
+    """The rows have the columns of the `postal_codes` SQL table (`sql/schema.sql`)."""
 
     def test_rows_take_the_canton_holding_most_addresses(self) -> None:
         """Versoix is GE although 0.2 % of its addresses lie in Mies (VD)."""
-        rows = rows_from_swisstopo(SWISSTOPO_EXTRACT.read_text(encoding="utf-8-sig"))
+        rows = extract_rows()
 
         self.assertIn(PostalCode("1290", "Versoix", "GE"), rows)
         self.assertIn(PostalCode("1290", "Chavannes-des-Bois", "VD"), rows)
@@ -56,48 +34,93 @@ class TestPostalCodes(unittest.TestCase):
 
     def test_rows_without_canton_are_left_out(self) -> None:
         """Liechtenstein's localities have no canton: they are not in the table."""
-        rows = rows_from_swisstopo(SWISSTOPO_EXTRACT.read_text(encoding="utf-8-sig"))
+        self.assertNotIn("9485", {row.postal_code for row in extract_rows()})
 
-        self.assertNotIn("9485", {row.postal_code for row in rows})
 
-    def test_refresh_writes_the_table_with_the_sql_columns(self) -> None:
-        """The refresh downloads swisstopo once and writes postal_code,locality,canton."""
+class TestCantonLookup(unittest.IsolatedAsyncioTestCase):
+    def setUp(self) -> None:
+        self.lookup = CantonLookup(extract_rows())
+
+    def test_single_canton_postal_code(self) -> None:
+        """A postal code within one canton gives that canton, whatever the town."""
+        self.assertEqual(self.lookup.canton("1206", None), "GE")
+        self.assertEqual(self.lookup.canton("1070", "Puidoux"), "VD")
+        self.assertEqual(self.lookup.canton("2300", "Chaux-de-Fonds"), "NE")
+
+    def test_shared_postal_code_uses_locality(self) -> None:
+        """1290 is Versoix (GE) and Chavannes-des-Bois (VD): the locality decides."""
+        self.assertEqual(self.lookup.canton("1290", "Versoix"), "GE")
+        self.assertEqual(self.lookup.canton("1290", "Chavannes-des-Bois"), "VD")
+        self.assertEqual(self.lookup.canton("1290", "versoix"), "GE")
+
+    def test_ambiguous_or_unknown_is_none(self) -> None:
+        """No canton is guessed: a shared code without its town, or an unknown one."""
+        self.assertIsNone(self.lookup.canton(None, None))
+        cases = (("1290", None), ("1290", "Nyon"), ("0000", None), ("9485", "Nendeln"))
+        for postal_code, locality in cases:
+            with (
+                self.subTest(postal_code=postal_code, locality=locality),
+                self.assertLogs("flatpulse.common.postal_codes", "WARNING") as logs,
+            ):
+                self.assertIsNone(self.lookup.canton(postal_code, locality))
+            self.assertIn(postal_code, logs.output[0])
+
+    async def test_load_reads_the_table_once(self) -> None:
+        """The lookup is the table read once, by a SELECT, then kept in memory."""
+        rows = [{"postal_code": "1290", "locality": "Versoix", "canton": "GE"}]
         with patch(
-            "flatpulse.common.postal_codes.httpx.get",
-            return_value=swisstopo_response(),
-        ) as get:
-            main(self.table)
+            "flatpulse.common.postal_codes.db.get_postal_codes",
+            AsyncMock(return_value=rows),
+        ) as get_postal_codes:
+            lookup = await CantonLookup.load()
 
-        get.assert_called_once()
-        self.assertIn(
-            "ch.swisstopo-vd.ortschaftenverzeichnis_plz", get.call_args.args[0]
-        )
-        header = self.table.read_text(encoding="utf-8").splitlines()[0]
-        self.assertEqual(header, ",".join(COLUMNS))
-        self.assertEqual(
-            read_table(self.table)["1290"],
-            {"versoix": "GE", "chavannes-des-bois": "VD"},
-        )
+        get_postal_codes.assert_awaited_once()
+        self.assertEqual(lookup.canton("1290", "Versoix"), "GE")
 
-    def test_refresh_keeps_the_table_when_swisstopo_is_down(self) -> None:
-        """swisstopo unreachable: an explicit error, and the table is left as it was."""
-        self.table.write_text("postal_code,locality,canton\n1206,Genève,GE\n")
-        before = self.table.read_text(encoding="utf-8")
-
+    async def test_load_empty_table_raises(self) -> None:
+        """An empty table stops the startup: every canton would be None silently."""
         with (
             patch(
-                "flatpulse.common.postal_codes.httpx.get",
-                side_effect=httpx.ConnectError("Network is unreachable"),
+                "flatpulse.common.postal_codes.db.get_postal_codes",
+                AsyncMock(return_value=[]),
             ),
-            self.assertRaises(httpx.ConnectError),
+            self.assertRaises(RuntimeError) as raised,
         ):
-            main(self.table)
+            await CantonLookup.load()
+        self.assertIn("python -m flatpulse.common.postal_codes", str(raised.exception))
 
-        self.assertEqual(self.table.read_text(encoding="utf-8"), before)
 
-    def test_committed_table_has_the_sql_columns(self) -> None:
-        """`sql/postal_codes.csv` loads as is with COPY … CSV HEADER (#133)."""
-        header = TABLE_PATH.read_text(encoding="utf-8").splitlines()[0]
+class TestFillMissingCanton(unittest.TestCase):
+    def test_pipeline_fills_missing_canton_from_postal_code(self) -> None:
+        """The canton written by the source wins; the postal code only fills a gap."""
+        lookup = Mock(spec=CantonLookup)
+        lookup.canton.return_value = "VD"
+        naef = Listing(
+            external_id="214177.1113",
+            external_url="https://www.naef.ch/louer/appartements/puidoux/214177.1113",
+            title="Appartement de 3½ pièces",
+            postal_code="1070",
+            city="Puidoux",
+        )
+        comptoir = Listing(
+            external_id="901969",
+            external_url="https://www.comptoir-immo.ch/location/901969",
+            title="Bureau à louer au centre de Sion",
+            city="Sion",
+            canton="VS",
+        )
 
-        self.assertEqual(header, ",".join(COLUMNS))
-        self.assertEqual(read_table()["1290"]["versoix"], "GE")
+        self.assertEqual(fill_missing_canton(naef, lookup).canton, "VD")
+        self.assertEqual(fill_missing_canton(comptoir, lookup).canton, "VS")
+        lookup.canton.assert_called_once_with("1070", "Puidoux")
+
+
+class TestRefreshCommand(unittest.TestCase):
+    def test_main_without_database_url_exits(self) -> None:
+        """The refresh writes to PostgreSQL: no DATABASE_URL, a clear stop."""
+        with (
+            patch.dict(os.environ, clear=True),
+            self.assertRaises(SystemExit) as raised,
+        ):
+            main()
+        self.assertIn("DATABASE_URL", str(raised.exception))

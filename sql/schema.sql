@@ -101,8 +101,8 @@ CREATE TABLE notifications (
 -- NPA → canton (#133). Une ligne par (NPA, localité), avec le canton qui porte le
 -- plus d'adresses de la localité : 1290 est Versoix (GE) et Chavannes-des-Bois (VD).
 -- Données : répertoire officiel des localités, « Source : Office fédéral de
--- topographie swisstopo ». Les colonnes sont celles de sql/postal_codes.csv, qui se
--- charge tel quel : \copy postal_codes FROM 'sql/postal_codes.csv' CSV HEADER
+-- topographie swisstopo ». Remplie et rafraîchie par
+-- `python -m flatpulse.common.postal_codes` (TRUNCATE + COPY dans une transaction).
 CREATE TABLE postal_codes (
     postal_code  VARCHAR(4)  NOT NULL,
     locality     TEXT        NOT NULL,

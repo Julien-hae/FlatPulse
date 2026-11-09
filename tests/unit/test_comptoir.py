@@ -10,7 +10,7 @@ from flatpulse.common.models import Listing, PropertyType
 from flatpulse.scrapers.rate_limiter import RateLimiter
 from flatpulse.scrapers.sources.comptoir import ComptoirScraper
 from tests.contract.test_scraper_contract import ScraperContractMixin
-from tests.helpers import response_from_fixture
+from tests.helpers import CANTON_LOOKUP, response_from_fixture
 
 YVORNE = (
     "magnifique-duplex-de-5-5-pices-en-attique-denviron-165m2-dans-un-petit-"
@@ -279,7 +279,9 @@ class TestComptoirScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase
     async def test_comptoir_acquires_before_each_page(self) -> None:
         """Each catalogue page acquires a token immediately before its GET."""
         rate_limiter = AsyncMock(spec=RateLimiter)
-        scraper = ComptoirScraper(rate_limiter=rate_limiter)
+        scraper = ComptoirScraper(
+            rate_limiter=rate_limiter, canton_lookup=CANTON_LOOKUP
+        )
         manager = Mock()
         with (
             patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get,

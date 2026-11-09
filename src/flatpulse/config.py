@@ -3,7 +3,6 @@
 import logging
 import os
 
-from flatpulse.common import postal_codes
 from flatpulse.common.logging_configuration import log_level_name
 
 REQUIRED_VARS = ["DATABASE_URL", "TELEGRAM_BOT_TOKEN"]
@@ -20,12 +19,6 @@ class Config:
                 f"Missing required environment variables: {', '.join(missing)}\n"
                 "Export them before starting; nothing reads .env by itself: "
                 "`set -a; . ./.env; set +a` loads it into the shell (see .env.example)."
-            )
-        if not postal_codes.TABLE_PATH.is_file():
-            raise SystemExit(
-                f"Missing postal code table: {postal_codes.TABLE_PATH}\n"
-                "It is read from the repository checkout (sql/postal_codes.csv) "
-                "until it moves to PostgreSQL (#133)."
             )
         self.database_url = os.environ["DATABASE_URL"]
         self.telegram_token = os.environ["TELEGRAM_BOT_TOKEN"]

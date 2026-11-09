@@ -6,6 +6,7 @@ import os
 import unittest
 
 from flatpulse.common.models import Listing, PropertyType
+from flatpulse.common.postal_codes import CantonLookup, download_swisstopo
 from flatpulse.scrapers.base import HttpScraper
 from flatpulse.scrapers.rate_limiter import RateLimiter
 from flatpulse.scrapers.sources.burger import BurgerScraper
@@ -123,8 +124,10 @@ class LiveSourcesTest(unittest.TestCase):
         """Fetch each catalogue once per run: this is real traffic at the agency."""
         super().setUpClass()
         rate_limiter = RateLimiter(RATE_LIMITS_RPM)
+        # Read from swisstopo rather than the database, which this audit does not need.
+        canton_lookup = CantonLookup(download_swisstopo())
         scrapers = [
-            scraper_class(rate_limiter=rate_limiter)
+            scraper_class(rate_limiter=rate_limiter, canton_lookup=canton_lookup)
             for scraper_class in SCRAPER_CLASSES
         ]
         with skipped_listings() as skipped:

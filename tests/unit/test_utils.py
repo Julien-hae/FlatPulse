@@ -6,7 +6,6 @@ from typing import Any
 from flatpulse.common.models import PropertyType
 from flatpulse.common.utils import (
     canton_code,
-    canton_from_postal_code,
     is_monthly_rent,
     parse_floor,
     parse_monthly_rent,
@@ -117,30 +116,6 @@ class TestUtils(unittest.TestCase):
         with self.assertLogs("flatpulse.common.utils", "WARNING") as logs:
             self.assertIsNone(canton_code("Atlantide"))
         self.assertIn("Atlantide", logs.output[0])
-
-    def test_canton_from_postal_code_single_canton(self) -> None:
-        """A postal code within one canton gives that canton, whatever the town."""
-        self.assertEqual(canton_from_postal_code("1206", None), "GE")
-        self.assertEqual(canton_from_postal_code("1070", "Puidoux"), "VD")
-        self.assertEqual(canton_from_postal_code("2300", "Chaux-de-Fonds"), "NE")
-
-    def test_canton_from_postal_code_shared_uses_locality(self) -> None:
-        """1290 is Versoix (GE) and Chavannes-des-Bois (VD): the locality decides."""
-        self.assertEqual(canton_from_postal_code("1290", "Versoix"), "GE")
-        self.assertEqual(canton_from_postal_code("1290", "Chavannes-des-Bois"), "VD")
-        self.assertEqual(canton_from_postal_code("1290", "versoix"), "GE")
-
-    def test_canton_from_postal_code_ambiguous_or_unknown_is_none(self) -> None:
-        """No canton is guessed: a shared code without its town, or an unknown one."""
-        self.assertIsNone(canton_from_postal_code(None, None))
-        cases = (("1290", None), ("1290", "Nyon"), ("0000", None), ("9485", "Nendeln"))
-        for postal_code, locality in cases:
-            with (
-                self.subTest(postal_code=postal_code, locality=locality),
-                self.assertLogs("flatpulse.common.utils", "WARNING") as logs,
-            ):
-                self.assertIsNone(canton_from_postal_code(postal_code, locality))
-            self.assertIn(postal_code, logs.output[0])
 
     def test_parse_floor(self) -> None:
         """Numbered floors, ground floor as 0, basements below 0, None without one."""

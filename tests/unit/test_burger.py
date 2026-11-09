@@ -10,7 +10,7 @@ from flatpulse.common.models import Listing, PropertyType
 from flatpulse.scrapers.rate_limiter import RateLimiter
 from flatpulse.scrapers.sources.burger import BurgerScraper
 from tests.contract.test_scraper_contract import ScraperContractMixin
-from tests.helpers import response_from_fixture
+from tests.helpers import CANTON_LOOKUP, response_from_fixture
 
 LOUER = "https://www.burger-sa.ch/fr/louer/"
 MONT_BLANC = LOUER + "geneve-magnifique-appartement-de-5-pieces-br-rue-du-mont-bla"
@@ -43,7 +43,9 @@ class TestBurgerScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
 
     def new_scraper(self) -> BurgerScraper:
         """A fresh BurgerScraper, typed as such: its parse_listing also takes the URL."""
-        return BurgerScraper(rate_limiter=AsyncMock(spec=RateLimiter))
+        return BurgerScraper(
+            rate_limiter=AsyncMock(spec=RateLimiter), canton_lookup=CANTON_LOOKUP
+        )
 
     async def fetch_from_fixture(self) -> list[Listing]:
         """Serve the sitemap, then its rental fiches."""
@@ -315,7 +317,7 @@ class TestBurgerScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
     async def test_burger_acquires_before_sitemap_and_each_fiche(self) -> None:
         """Await a token before the sitemap GET and each of the eleven fiche GETs."""
         limiter = AsyncMock(spec=RateLimiter)
-        scraper = BurgerScraper(rate_limiter=limiter)
+        scraper = BurgerScraper(rate_limiter=limiter, canton_lookup=CANTON_LOOKUP)
         manager = Mock()
         urls = [
             BurgerScraper.base_url,

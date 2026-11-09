@@ -9,6 +9,9 @@ import httpx
 
 from flatpulse.common.models import Listing, PropertyType
 from flatpulse.scrapers.base import HttpScraper
+from flatpulse.scrapers.rate_limiter import RateLimiter
+from flatpulse.scrapers.sources.naef import NaefScraper
+from tests.helpers import CANTON_LOOKUP
 from tests.live_report import (
     FillCount,
     Thresholds,
@@ -102,9 +105,12 @@ class LiveReportTest(unittest.TestCase):
         def invalid() -> Listing:
             raise ValueError("title cannot be empty")
 
+        scraper = NaefScraper(
+            rate_limiter=mock.AsyncMock(spec=RateLimiter), canton_lookup=CANTON_LOOKUP
+        )
         base_logger = logging.getLogger("flatpulse.scrapers.base")
         with self.assertLogs(base_logger), skipped_listings() as skipped:
-            HttpScraper._parse_or_skip(invalid)
+            scraper._parse_or_skip(invalid)
             base_logger.warning("Fiche %s : connexion coupée", "https://example.test")
 
         self.assertEqual(skipped, ["Skipped invalid listing: title cannot be empty"])

@@ -14,7 +14,7 @@ when a link fails is the caller's job.
 Amounts are in centimes (`price_chf`, `charges_chf`, `min_price`, `max_price`).
 """
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from datetime import datetime
 from typing import Any
 
@@ -296,3 +296,27 @@ async def insert_profile(user_id: int, profile_data: Mapping[str, object]) -> in
         sql.SQL(", ").join(sql.Placeholder() * len(columns)),
     )
     return int(await _fetch_value(query, [user_id, *profile_data.values()]))
+
+
+async def replace_postal_codes(rows: Iterable[tuple[str, str, str]]) -> None:
+    """Replace the whole `postal_codes` table with `rows`, in one transaction.
+
+    Each row is (postal_code, locality, canton). A row the table refuses rolls the
+    `TRUNCATE` back too: the table is never left empty or half written.
+    """
+    async with get_pool().connection() as conn, conn.transaction():
+        await conn.execute("TRUNCATE postal_codes")
+        async with conn.cursor().copy(
+            "COPY postal_codes (postal_code, locality, canton) FROM STDIN"
+        ) as copy:
+            for row in rows:
+                await copy.write_row(row)
+
+
+async def get_postal_codes() -> list[DictRow]:
+    """Every row of `postal_codes`, as dicts with postal_code, locality and canton."""
+    async with get_pool().connection() as conn:
+        cursor = await conn.execute(
+            "SELECT postal_code, locality, canton FROM postal_codes"
+        )
+        return await cursor.fetchall()

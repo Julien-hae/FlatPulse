@@ -11,7 +11,6 @@ from parsel import Selector
 
 from flatpulse.common.models import Listing, PropertyType
 from flatpulse.common.utils import (
-    canton_from_postal_code,
     is_monthly_rent,
     parse_floor,
     parse_monthly_rent,
@@ -108,7 +107,6 @@ class BurgerScraper(HttpScraper):
             address=address[0] if address else None,
             postal_code=locality.postal_code,
             city=locality.city,
-            canton=canton_from_postal_code(locality.postal_code, locality.city),
             description=node.css("div.prose").xpath("normalize-space()").get() or None,
             images=tuple(
                 urljoin(self.base_url, src)
