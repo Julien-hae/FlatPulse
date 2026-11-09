@@ -211,9 +211,11 @@ fingerprint différent) mémorisent ce qu'ils voient : un doublon répond `False
 un changement de prix n'est signalé qu'une fois. Le pipeline traite une annonce si
 `is_new(...) or has_changed(...)`.
 
-**`AdaptivePoller.compute_interval()`** : source active (>5 annonces/h) → intervalle ÷ 2 ;
-inactive (0 depuis 6 h) → × 2 ; erreurs consécutives → × 2ⁿ ; nuit et week-end → × 3.
-Bornes strictes : **30 s ≤ intervalle ≤ 600 s**.
+**`AdaptivePoller.compute_interval(source_config, stats)`** (`scrapers/adaptive_poller.py`)
+part de `poll_interval_s` : source active (>5 annonces/h) → ÷ 2, sinon inactive (0 depuis
+6 h) → × 2 ; n erreurs consécutives → × 2ⁿ ; hors heures de bureau (avant 7 h, dès 20 h,
+week-end, heure suisse) → × 3. Bornes strictes : **30 s ≤ intervalle ≤ 600 s**. L'horloge
+est injectée au constructeur (`clock`), ce qui rend les règles horaires testables.
 
 ### 5.2 Enrichissement LLM (#50, #51, #52)
 
