@@ -51,10 +51,34 @@ jobs:
   test:
     name: Tests et couverture
     runs-on: ubuntu-latest
+    # Un PostgreSQL éphémère pour tests/integration/test_db.py : les tests unitaires
+    # mockent le pool, seuls ceux-là prouvent que le SQL de db.py tourne vraiment.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: flatpulse
+          POSTGRES_DB: flatpulse_test
+          # Propre à ce conteneur jetable, joignable du seul runner : pas un secret.
+          POSTGRES_PASSWORD: flatpulse-ci
+        ports:
+          - 5432:5432
+        # Même healthcheck que docker-compose.yml : les steps attendent qu'il passe.
+        options: >-
+          --health-cmd "pg_isready -U flatpulse -d flatpulse_test"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 15
+    env:
+      FLATPULSE_TEST_DATABASE_URL: postgresql://flatpulse:flatpulse-ci@localhost:5432/flatpulse_test
     steps:
       - uses: actions/checkout@v7
 
       - uses: ./.github/actions/setup-python-poetry
+
+      - name: Charger le schéma
+        # ON_ERROR_STOP : un DDL cassé fait échouer le job ici, pas au premier test.
+        run: psql --no-psqlrc -v ON_ERROR_STOP=1 -q -d "$FLATPULSE_TEST_DATABASE_URL" -f sql/schema.sql
 
       - name: Suite de tests
         # `coverage run` reprend la command_line de pyproject.toml :
