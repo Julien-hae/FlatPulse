@@ -1,30 +1,14 @@
-# Environnement de dev local (#63) : PostgreSQL 16 et Redis 7, en une commande.
-#
-#   cp .env.example .env    # puis remplir POSTGRES_PASSWORD (et DATABASE_URL)
-#   docker compose up -d --wait
-#
-# Au premier lancement, quand le volume est vide, PostgreSQL applique sql/schema.sql
-# puis charge sql/postal_codes.csv dans postal_codes. Les scripts d'init ne tournent
-# plus ensuite : après une modification du schéma, repartir d'un volume vide avec
-# `docker compose down -v` (les données de dev sont perdues).
-#
-# Les ports n'écoutent que sur 127.0.0.1 : la base n'est pas exposée au réseau. Port
-# déjà pris sur la machine (autre PostgreSQL, autre projet) : POSTGRES_PORT ou
-# REDIS_PORT dans .env.
-
 services:
   postgres:
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: flatpulse
       POSTGRES_DB: flatpulse
-      # Lu dans .env (jamais en clair ici) ; sans lui, compose refuse de démarrer.
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD manquant, voir .env.example}
     ports:
       - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
-      # Joués par ordre alphabétique, une seule fois, sur un volume vide.
       - ./sql/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
       - ./sql/postal_codes.csv:/flatpulse/postal_codes.csv:ro
     configs:
@@ -38,7 +22,6 @@ services:
 
   redis:
     image: redis:7-alpine
-    # AOF : les données survivent à un redémarrage du conteneur.
     command: ["redis-server", "--appendonly", "yes"]
     ports:
       - "127.0.0.1:${REDIS_PORT:-6379}:6379"
@@ -52,7 +35,6 @@ services:
 
 configs:
   load-postal-codes:
-    # Le CSV se charge tel quel (docs/architecture.md §6.1, #133).
     content: |
       COPY postal_codes FROM '/flatpulse/postal_codes.csv' WITH (FORMAT csv, HEADER);
 
