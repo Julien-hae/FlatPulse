@@ -587,8 +587,8 @@ d'implémenter les stories concernées.
    les exemples gagneraient à être réécrits avec des communes genevoises.
 6. **Version de Python.** `pyproject.toml` impose `~3.14`, la story #66 installe
    `python3.12` sur le VPS. Aligner sur 3.14.
-7. **Dépendances manquantes.** `pyproject.toml` ne déclare aujourd'hui que `numpy`,
-   `httpx` et `parsel`. Manquent `psycopg`, `openai`, `python-telegram-bot`,
+7. **Dépendances manquantes.** `pyproject.toml` déclare `numpy`, `httpx`, `parsel`
+   et, depuis #71, `psycopg[binary,pool]`. Manquent `openai`, `python-telegram-bot`,
    `aiosmtplib`, `prometheus-client`, `alembic` — à ajouter par la story qui les
    introduit, pas en bloc (YAGNI). `numpy` est un reliquat du template : à retirer s'il
    ne sert à rien.
@@ -625,3 +625,21 @@ d'implémenter les stories concernées.
     Depuis #133, `sql/schema.sql` en crée six (`postal_codes` en plus), et
     `docker compose up` y charge `sql/postal_codes.csv` (4 060 lignes) : `\dt` en liste
     six. La story est à corriger.
+13. **Couche DB (#71) : signatures ajustées.** *Tranché le 09.11.2026.*
+    - `insert_listing(listing: Listing, source_slug: str)` : un `Listing` (§11.11) ne
+      porte pas sa source, et le pipeline connaît le slug (`SourceConfig`), pas
+      `sources.id`. La requête résout l'id par `slug` ; un slug inconnu lève
+      `LookupError`. Le `ON CONFLICT (source_id, external_id) DO UPDATE` réécrit
+      toujours les champs scrapés (pas seulement si le fingerprint change) : sinon
+      `RETURNING` ne rend pas l'id d'une annonce inchangée. `enriched`, `first_seen_at`
+      et `is_active` ne sont pas touchés.
+    - Le pool s'ouvre avec `open_pool(config.database_url)` au démarrage et se ferme avec
+      `close_pool()` ; `get_pool()` le rend, ou lève `RuntimeError` s'il n'est pas
+      ouvert. La story faisait créer le pool par `get_pool()` : l'ouvrir explicitement
+      fait échouer le démarrage, et non la première requête, si la base est injoignable.
+    - `get_active_profiles` filtre en SQL (`sp.is_active AND u.is_active`) : un user
+      désactivé ne reçoit plus d'alertes. Avec un pool mocké, le test de la story ne
+      peut pas prouver ce filtre ; `tests/integration/test_db.py` le fait sur un vrai
+      PostgreSQL (opt-in, `FLATPULSE_TEST_DATABASE_URL`).
+    - Les conflits attendus sont absorbés en SQL (`ON CONFLICT`) ; les autres erreurs
+      psycopg remontent telles quelles, c'est au pipeline (#64) de ne pas tomber.
