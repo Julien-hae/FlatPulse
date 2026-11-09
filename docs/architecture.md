@@ -428,9 +428,11 @@ raison qui les a fait naître :
 - `contract/` — les invariants que *tout* scraper doit respecter, définis une fois et
   hérités. C'est un concept distinct d'un test unitaire, pas un dossier de rangement.
 - `integration/` — ce qui a besoin d'un vrai PostgreSQL, du réseau ou d'un
-  `docker compose up`. Aujourd'hui `test_pipeline.py` est encore entièrement mocké, mais
-  c'est là que les tests lents iront, et c'est ce qui rend le dossier utile : pouvoir
-  lancer tout sauf eux.
+  `docker compose up`. Les tests sur PostgreSQL (`test_db.py`) tournent en CI contre
+  un service `postgres:16-alpine` chargé avec `sql/schema.sql` (#141) ; en local, ils
+  demandent `FLATPULSE_TEST_DATABASE_URL` et sont ignorés sans elle. Aujourd'hui
+  `test_pipeline.py` est encore entièrement mocké, mais c'est là que les tests lents
+  iront, et c'est ce qui rend le dossier utile : pouvoir lancer tout sauf eux.
 
 L'audit réel des sources (`tests/integration/test_live_sources.py`) est ignoré par
 défaut. Pour l'exécuter :
@@ -640,6 +642,6 @@ d'implémenter les stories concernées.
     - `get_active_profiles` filtre en SQL (`sp.is_active AND u.is_active`) : un user
       désactivé ne reçoit plus d'alertes. Avec un pool mocké, le test de la story ne
       peut pas prouver ce filtre ; `tests/integration/test_db.py` le fait sur un vrai
-      PostgreSQL (opt-in, `FLATPULSE_TEST_DATABASE_URL`).
+      PostgreSQL (`FLATPULSE_TEST_DATABASE_URL`, fournie par la CI depuis #141).
     - Les conflits attendus sont absorbés en SQL (`ON CONFLICT`) ; les autres erreurs
       psycopg remontent telles quelles, c'est au pipeline (#64) de ne pas tomber.

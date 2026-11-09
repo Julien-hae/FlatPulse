@@ -1,7 +1,9 @@
-"""Opt-in tests of the database layer (#71) against a real PostgreSQL.
+"""Tests of the database layer (#71) against a real PostgreSQL.
 
 They need a disposable database loaded with sql/schema.sql, given in
-FLATPULSE_TEST_DATABASE_URL: every test empties its tables. With docker compose:
+FLATPULSE_TEST_DATABASE_URL: every test empties its tables. The CI provides one
+(#141, `.github/workflows/ci.yml`); without the variable they are skipped. Locally,
+with docker compose:
 
     docker compose exec postgres createdb -U flatpulse flatpulse_test
     docker compose exec -T postgres psql -U flatpulse flatpulse_test < sql/schema.sql
