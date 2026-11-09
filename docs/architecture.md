@@ -204,9 +204,12 @@ le GET ; `run()` ne fait pas de pause séparée. Le pipeline (#64) construit le 
 partir de `SourceConfig.rate_limit_rpm`. Un ban = une source perdue, c'est la protection
 centrale.
 
-**`DeduplicationService`** : clé `source_slug:external_id`. `is_new()` (fingerprint
-jamais vu) et `has_changed()` (même source+id, fingerprint différent). Dict en mémoire
-pour le MVP.
+**`DeduplicationService`** (`scrapers/dedup.py`) : clé `source_slug:external_id`,
+fingerprint mémorisé par clé dans un dict en mémoire (MVP). `is_new(listing,
+source_slug)` (clé jamais vue) et `has_changed(listing, source_slug)` (clé connue,
+fingerprint différent) mémorisent ce qu'ils voient : un doublon répond `False` aux deux,
+un changement de prix n'est signalé qu'une fois. Le pipeline traite une annonce si
+`is_new(...) or has_changed(...)`.
 
 **`AdaptivePoller.compute_interval()`** : source active (>5 annonces/h) → intervalle ÷ 2 ;
 inactive (0 depuis 6 h) → × 2 ; erreurs consécutives → × 2ⁿ ; nuit et week-end → × 3.
@@ -643,3 +646,10 @@ d'implémenter les stories concernées.
       PostgreSQL (opt-in, `FLATPULSE_TEST_DATABASE_URL`).
     - Les conflits attendus sont absorbés en SQL (`ON CONFLICT`) ; les autres erreurs
       psycopg remontent telles quelles, c'est au pipeline (#64) de ne pas tomber.
+14. **Dedup (#46) : `is_new` par clé, pas par fingerprint.** *Tranché le 09.11.2026.*
+    La story décrit `is_new` comme « fingerprint inconnu ». Par clé
+    (`source_slug:external_id`), les trois cas sont disjoints : nouvelle (clé inconnue),
+    modifiée (`has_changed`), doublon. Par fingerprint, une baisse de prix serait à la
+    fois nouvelle et modifiée. Les deux méthodes prennent `(listing: Listing,
+    source_slug: str)`, comme `db.insert_listing` (§11.13) : un `Listing` ne porte pas
+    sa source.
