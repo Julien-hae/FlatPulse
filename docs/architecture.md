@@ -103,7 +103,7 @@ ne pas diverger.
 | `users` | abonné, identifié par `telegram_id` ou `email` | `plan` porte l'offre (§4.2) |
 | `search_profiles` | jeu de critères d'un abonné | les hard filters du matching (§5.3) |
 | `notifications` | alerte envoyée | jamais deux fois la même annonce sur le même canal |
-| `postal_codes` | (NPA, localité) | table de référence NPA → canton (§6.1) |
+| `postal_codes` | (NPA, localité) | référence NPA → canton, remplie depuis swisstopo (§6.1) |
 
 La base refuse ce que `Listing` refuse : prix, charges, pièces et surface strictement
 positifs (absent = `NULL`, jamais `0`), canton en deux majuscules, `property_type` parmi
@@ -285,7 +285,7 @@ dedup `(user_id, listing_id, channel)` avant d'envoyer, applique le throttling p
 ### 5.5 Pipeline (#64)
 
 Boucle asyncio : pour chaque source, scrape → dedup → puis, par nouveau listing,
-enrich → match → dispatch. Arrêt propre sur SIGTERM/SIGINT. **L'erreur d'une source
+canton complété depuis le NPA (§6.1) → enrich → match → dispatch. Arrêt propre sur SIGTERM/SIGINT. **L'erreur d'une source
 n'affecte jamais les autres** : un site down ne bloque pas le pipeline. Un doublon
 court-circuite avant l'enrichissement, pour ne pas consommer de quota LLM.
 
@@ -342,29 +342,29 @@ données fausses silencieusement.
   la vente) dans le `Listing` (§5.1) ; le filtrage se fait en aval. Ne pas se fier aux paramètres de filtre de la
   source pour typer une annonce : ils sont parfois ignorés côté serveur.
 - **Canton** tantôt en toutes lettres, tantôt en code, parfois absent (Naef : un quart
-  des annonces ; Burger : jamais écrit). La colonne est un `VARCHAR(2)` : normaliser. Absent,
-  il se déduit du NPA par `utils.canton_from_postal_code(postal_code, locality)` (#131),
-  jamais deviné : un NPA inconnu, ou partagé entre cantons sans localité reconnue, donne
-  `None` et un WARNING. **1290** est Versoix (GE) **et** Chavannes-des-Bois (VD) : la
-  localité tranche.
+  des annonces ; Burger : jamais écrit). La colonne est un `VARCHAR(2)` : normaliser.
+  **Le scraper ne renseigne `canton` que si la source l'écrit** (Naef `adresse_canton`,
+  Comptoir en-tête) ; sinon `None`, avec `postal_code` et `city` tels que publiés. Le
+  pipeline le complète ensuite depuis le NPA (#133), entre Dedup et Enrich :
+  `postal_codes.fill_missing_canton(listing, lookup)` garde un canton écrit par la
+  source et ne fait que combler un trou. Le canton n'est jamais deviné : un NPA inconnu,
+  ou partagé entre cantons sans localité reconnue, donne `None` et un WARNING. **1290**
+  est Versoix (GE) **et** Chavannes-des-Bois (VD) : la localité tranche, sans la casse.
 
-  La table est **`sql/postal_codes.csv`**, aux colonnes de la table SQL `postal_codes`
-  de `sql/schema.sql` (`postal_code,locality,canton`, #62) : une ligne par (NPA, localité),
-  avec le canton qui porte le plus d'adresses de la localité (colonne `Adressenanteil`) ;
-  les lignes sans canton (Liechtenstein) sont ignorées. Elle est tirée de l'**open data
-  swisstopo** (répertoire officiel des localités, collection STAC
+  La table est **`postal_codes`** en base (`sql/schema.sql`) : une ligne par (NPA,
+  localité), avec le canton qui porte le plus d'adresses de la localité (colonne
+  `Adressenanteil`) ; les lignes sans canton (Liechtenstein) sont ignorées. Elle est
+  tirée de l'**open data swisstopo** (répertoire officiel des localités, collection STAC
   `ch.swisstopo-vd.ortschaftenverzeichnis_plz`, « Source : Office fédéral de topographie
-  swisstopo ») et se rafraîchit par `python -m flatpulse.common.postal_codes` ; swisstopo
-  injoignable → erreur explicite, la table garde sa version. Elle est lue une fois par
-  processus, par `postal_codes.read_table()` seulement. La table SQL existe déjà et le
-  fichier s'y charge tel quel (`\copy postal_codes FROM 'sql/postal_codes.csv' CSV
-  HEADER`) ; `docker compose up` l'y charge à l'init (#63). Brancher le
-  rafraîchissement et le lookup dessus, puis retirer le CSV, c'est #133, qui attend la couche DB (#71) et le
-  pipeline (#64). Le parsing du répertoire est testé sur un extrait réel figé,
-  `tests/fixtures/swisstopo_localities.csv`.
-  Le fichier est lu depuis le checkout du dépôt (il n'est pas dans le paquet) : `Config`
-  vérifie sa présence au démarrage, pour qu'il manque au lancement et non au premier
-  poll, où l'erreur ferait tomber toute la source.
+  swisstopo »). `python -m flatpulse.common.postal_codes` (avec `DATABASE_URL`) la
+  remplit sur une base neuve et la rafraîchit ensuite : téléchargement d'abord, puis
+  `TRUNCATE` + `COPY` dans une seule transaction. swisstopo injoignable → erreur
+  explicite avant toute écriture ; une ligne refusée annule le `TRUNCATE` : la table
+  n'est jamais vide ni à moitié écrite. Le pipeline la lit une fois au démarrage
+  (`CantonLookup.load()`, un `SELECT` gardé en mémoire), et refuse de démarrer si elle
+  est vide. Le parsing du répertoire est testé sur un extrait réel figé,
+  `tests/fixtures/swisstopo_localities.csv` ; le rafraîchissement, sur un vrai
+  PostgreSQL (`tests/integration/test_postal_codes.py`).
 
 - **Poids des pages** : Moser Vernet = 2,9 Mo par poll, soit ~2,8 Go/jour à 90 s sans
   `If-None-Match`.
@@ -622,9 +622,9 @@ d'implémenter les stories concernées.
     scrapers produisent des `Listing` : lire ces stories avec `listing: Listing`, accès
     par attribut (`listing.price_chf`) et non par clé.
 12. **Six tables, pas cinq.** Le test manuel de #63 attend « les 5 tables » de `\dt`.
-    Depuis #133, `sql/schema.sql` en crée six (`postal_codes` en plus), et
-    `docker compose up` y charge `sql/postal_codes.csv` (4 060 lignes) : `\dt` en liste
-    six. La story est à corriger.
+    `sql/schema.sql` en crée six (`postal_codes` en plus) : `\dt` en liste six. Depuis
+    #133, `docker compose up` crée la table vide ; `python -m
+    flatpulse.common.postal_codes` la remplit (≈ 4 060 lignes). La story est à corriger.
 13. **Couche DB (#71) : signatures ajustées.** *Tranché le 09.11.2026.*
     - `insert_listing(listing: Listing, source_slug: str)` : un `Listing` (§11.11) ne
       porte pas sa source, et le pipeline connaît le slug (`SourceConfig`), pas

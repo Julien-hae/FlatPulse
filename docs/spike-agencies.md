@@ -64,7 +64,7 @@ fiches distinctes. À recalculer au prochain passage du notebook.
 | `nb_rooms` | `nb_pieces` |
 | `surface_m2` | `surface_habitable` |
 | `city` | `adresse_localite` |
-| `canton` | `adresse_canton` (nom complet → abréviation via `utils.canton_code`) ; vide → `utils.canton_from_postal_code(npa, adresse_localite)` |
+| `canton` | `adresse_canton` (nom complet → abréviation via `utils.canton_code`) ; vide → `None`, complété par le pipeline depuis `npa` et `adresse_localite` (#133) |
 | `postal_code` | `npa` |
 | `images` | `imgs` (liste ou valeurs d'un objet indexé, dans l'ordre du payload) |
 
@@ -109,7 +109,7 @@ fiches distinctes. À recalculer au prochain passage du notebook.
 | étage | dans `h1` : « N(er\|e\|ème) étage » = N, « rez-de-chaussée » / « rdc » = 0, « N(er\|e) sous-sol » = -N ; autres cas = `None` |
 | bloc de détails | `div.space-y-4.mt-6` — unique, absent des cartes « Ces biens pourraient vous intéresser » |
 | rue / NPA ville | dans ce bloc, `div.text-base::text` (deux lignes séparées par `<br>`) : `address` = la rue ; la ligne `1205 Genève` donne `postal_code` et `city` |
-| canton | absent de la fiche : `utils.canton_from_postal_code(postal_code, city)` |
+| canton | absent de la fiche : `None`, complété par le pipeline depuis `postal_code` et `city` (#133) |
 | type / pièces / surface | dans ce bloc, chaque `div.text-sm` lu en entier contre sa grammaire : `<Type>[ <n> pièces]`, puis `[ENV. \| de ]<n> m2[ à <n> m2]` ; une ligne hors grammaire est loguée et ignorée |
 | images | `div.swiper-slide img::attr(data-src)`, relatives à `https://www.burger-sa.ch/` |
 

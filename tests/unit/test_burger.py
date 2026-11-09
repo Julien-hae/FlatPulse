@@ -150,21 +150,21 @@ class TestBurgerScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
                 "address": "Rue Emile-Yung 3 bis",
                 "postal_code": "1205",
                 "city": "Genève",
-                "canton": "GE",
             },
         )
 
-    async def test_burger_postal_code_and_canton(self) -> None:
-        """The « NPA localité » line gives the postal code, and the code the canton."""
+    async def test_burger_postal_code_without_canton(self) -> None:
+        """The « NPA localité » line gives the postal code; Burger never writes the
+        canton, the pipeline completes it from the postal code (#133)."""
         cases = {
-            "geneve-appartement-de-3-pieces-au-2eme-etage": ("1206", "GE"),
-            "le-lignon-parking-interne-au-1er-sous-sol": ("1219", "GE"),
-            "veyrier-veyrierbr-depot-a-louer": ("1255", "GE"),
+            "geneve-appartement-de-3-pieces-au-2eme-etage": "1206",
+            "le-lignon-parking-interne-au-1er-sous-sol": "1219",
+            "veyrier-veyrierbr-depot-a-louer": "1255",
         }
-        for slug, (postal_code, canton) in cases.items():
+        for slug, postal_code in cases.items():
             with self.subTest(slug=slug):
                 await self.assert_listing(
-                    LOUER + slug, {"postal_code": postal_code, "canton": canton}
+                    LOUER + slug, {"postal_code": postal_code, "canton": None}
                 )
 
     def test_burger_no_charges_without_rent(self) -> None:

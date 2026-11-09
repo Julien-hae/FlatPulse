@@ -63,16 +63,20 @@ class TestNaefScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
             },
         )
 
-    async def test_naef_canton_from_postal_code_when_empty(self) -> None:
-        """An empty `adresse_canton` is read from the postal code, and its town."""
+    async def test_naef_empty_canton_is_left_to_the_pipeline(self) -> None:
+        """An empty `adresse_canton` stays None, with the postal code and town the
+        pipeline completes it from (#133)."""
         cases = {
-            "214177.1113": "VD",  # 1070 Puidoux
-            "276209.1": "NE",  # 2300 La Chaux-de-Fonds
-            "EC.47365": "GE",  # 1290 Versoix, a code shared with Vaud
+            "214177.1113": ("1070", "Puidoux"),
+            "276209.1": ("2300", "La Chaux-de-Fonds"),
+            "EC.47365": ("1290", "Versoix"),  # a code shared with Vaud
         }
-        for external_id, canton in cases.items():
+        for external_id, (postal_code, city) in cases.items():
             with self.subTest(external_id=external_id):
-                await self.assert_listing(external_id, {"canton": canton})
+                await self.assert_listing(
+                    external_id,
+                    {"canton": None, "postal_code": postal_code, "city": city},
+                )
 
     async def test_naef_title_falls_back_to_type_designation(self) -> None:
         """A missing brochure title is replaced by the property's designation."""
