@@ -39,7 +39,7 @@ class NaefScraper(HttpScraper):
         """Extract the listing fields from a property node."""
         rent = (
             None
-            if node.jmespath("loyer_sur_demande").get() == "oui"
+            if self._rent_on_request(node)
             else self._text(node, "loyer_mensuel_brut")
         )
         surface_m2 = self._surface_m2(node)
@@ -67,8 +67,13 @@ class NaefScraper(HttpScraper):
         value = node.jmespath(key).get()
         return str(value) if value not in (None, "") else None
 
+    @staticmethod
+    def _rent_on_request(node: Selector) -> bool:
+        """Whether Naef hides the rent: its amounts are then not to be read."""
+        return node.jmespath("loyer_sur_demande").get() == "oui"
+
     def _property_type(self, node: Selector) -> PropertyType | None:
-        """Return property type."""
+        """PropertyType of the prop's `type_code`; an unknown code is logged, None."""
         type_code = self._text(node, "type_code")
         if not type_code:
             return None
@@ -85,8 +90,8 @@ class NaefScraper(HttpScraper):
         return canton_code(self._text(node, "adresse_canton"))
 
     def _charges_chf(self, node: Selector) -> int | None:
-        """Return charges in CHF."""
-        if node.jmespath("loyer_sur_demande").get() == "oui":
+        """Charges in centimes: gross rent less net rent, None unless positive."""
+        if self._rent_on_request(node):
             return None
         net = parse_swiss_price(self._text(node, "loyer_mensuel_net"))
         gross = parse_swiss_price(self._text(node, "loyer_mensuel_brut"))
@@ -97,7 +102,7 @@ class NaefScraper(HttpScraper):
         return charges if charges > 0 else None
 
     def _surface_m2(self, node: Selector) -> float | None:
-        """Return surface in m2."""
+        """Living surface in m²; Naef writes 0 for an unknown one: None."""
         return parse_surface(self._text(node, "surface_habitable")) or None
 
     def _images(self, node: Selector) -> tuple[str, ...]:

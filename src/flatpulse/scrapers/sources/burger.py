@@ -11,13 +11,12 @@ from parsel import Selector
 
 from flatpulse.common.models import Listing, PropertyType
 from flatpulse.common.utils import (
-    is_monthly_rent,
+    parse_charges,
     parse_floor,
     parse_monthly_rent,
     parse_property_type,
     parse_rooms,
     parse_surface,
-    parse_swiss_price,
 )
 from flatpulse.scrapers.base import HttpScraper
 
@@ -86,10 +85,8 @@ class BurgerScraper(HttpScraper):
         )
         rent = self._get_rent(node)
         price_chf = parse_monthly_rent(rent, features.surface_m2)
-        # Charges carry no unit: they are only added to a known, monthly rent.
-        charges_chf = None
-        if price_chf is not None and rent is not None and is_monthly_rent(rent):
-            charges_chf = parse_swiss_price(self._get_charges(node)) or None
+        charges_chf = parse_charges(self._get_charges(node), rent, price_chf)
+        # Burger shows the rent without charges: price_chf includes them.
         if price_chf is not None and charges_chf is not None:
             price_chf += charges_chf
         title = self._get_title(node)
@@ -134,7 +131,7 @@ class BurgerScraper(HttpScraper):
             elif surface := _SURFACE_ROW.fullmatch(row):
                 features = features._replace(surface_m2=parse_surface(surface["m2"]))
             else:
-                logger.warning("Fiche %s : ligne inconnue %r ignorée", url, row)
+                logger.warning("Fiche %s: unknown feature row %r ignored", url, row)
         return features
 
     @staticmethod

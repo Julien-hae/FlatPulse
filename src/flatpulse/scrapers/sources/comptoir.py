@@ -9,13 +9,12 @@ from parsel import Selector, SelectorList
 from flatpulse.common.models import Listing
 from flatpulse.common.utils import (
     canton_code,
-    is_monthly_rent,
+    parse_charges,
     parse_floor,
     parse_monthly_rent,
     parse_property_type,
     parse_rooms,
     parse_surface,
-    parse_swiss_price,
 )
 from flatpulse.scrapers.base import HttpScraper
 
@@ -65,10 +64,10 @@ class ComptoirScraper(HttpScraper):
         price_chf = parse_monthly_rent(
             self._text(node.css("h1 ~ .heading-3")), surface_m2
         )
-        rent = self._detail(node, "Loyer")
-        # Charges carry no unit: they belong only to a known, monthly rent.
-        monthly = price_chf is not None and rent is not None and is_monthly_rent(rent)
-        charges = self._detail(node, "Charges") if monthly else None
+        # The header rent already includes the charges of the « Détails » table.
+        charges_chf = parse_charges(
+            self._detail(node, "Charges"), self._detail(node, "Loyer"), price_chf
+        )
         property_label = self._detail(node, "Type de bien")
         h1 = node.css("h1")
         return Listing(
@@ -79,7 +78,7 @@ class ComptoirScraper(HttpScraper):
             title=self._text(h1) or (property_label if h1 else None) or "",
             property_type=parse_property_type(property_label),
             price_chf=price_chf,
-            charges_chf=parse_swiss_price(charges) or None,
+            charges_chf=charges_chf,
             nb_rooms=parse_rooms(self._detail(node, "Pièces")),
             surface_m2=surface_m2,
             floor=parse_floor(self._detail(node, "Etage")),
