@@ -139,11 +139,13 @@ Arborescence cible (`src/flatpulse/`) :
 
 ```
 config.py              Config, validation fail-fast au démarrage
-models.py              Listing, PropertyType, SourceConfig, MatchResult, ScrapingStats
-utils.py               parse_swiss_price, parse_rooms, parse_monthly_rent
 db.py                  pool psycopg + helpers CRUD
+postal_code_table.py   table postal_codes : remplissage swisstopo, lecture au démarrage
 main.py                orchestration du pipeline
-common/
+common/                sans réseau ni base : importable par toutes les couches
+  models.py            Listing, PropertyType, SourceConfig, MatchResult, ScrapingStats
+  utils.py             parse_swiss_price, parse_rooms, parse_monthly_rent
+  postal_codes.py      PostalCode, CantonLookup, fill_missing_canton
   logging_configuration.py
 scrapers/
   base.py              AbstractScraper (ABC), HttpScraper
@@ -366,12 +368,12 @@ données fausses silencieusement.
   `Adressenanteil`) ; les lignes sans canton (Liechtenstein) sont ignorées. Elle est
   tirée de l'**open data swisstopo** (répertoire officiel des localités, collection STAC
   `ch.swisstopo-vd.ortschaftenverzeichnis_plz`, « Source : Office fédéral de topographie
-  swisstopo »). `python -m flatpulse.common.postal_codes` (avec `DATABASE_URL`) la
+  swisstopo »). `python -m flatpulse.postal_code_table` (avec `DATABASE_URL`) la
   remplit sur une base neuve et la rafraîchit ensuite : téléchargement d'abord, puis
   `TRUNCATE` + `COPY` dans une seule transaction. swisstopo injoignable → erreur
   explicite avant toute écriture ; une ligne refusée annule le `TRUNCATE` : la table
   n'est jamais vide ni à moitié écrite. Le pipeline (#64) la lit une fois au démarrage
-  (`CantonLookup.load()`, un `SELECT` gardé en mémoire) et la passe aux scrapers ; il
+  (`load_canton_lookup()`, un `SELECT` gardé en mémoire) et la passe aux scrapers ; il
   refuse de démarrer si elle est vide. Les tests de scrapers utilisent un
   `CantonLookup` construit sur l'extrait swisstopo figé (`tests/helpers.py`), l'audit
   live un `CantonLookup` téléchargé depuis swisstopo. Le parsing du répertoire est testé sur un extrait réel figé,
@@ -638,7 +640,7 @@ d'implémenter les stories concernées.
 12. **Six tables, pas cinq.** Le test manuel de #63 attend « les 5 tables » de `\dt`.
     `sql/schema.sql` en crée six (`postal_codes` en plus) : `\dt` en liste six. Depuis
     #133, `docker compose up` crée la table vide ; `python -m
-    flatpulse.common.postal_codes` la remplit (≈ 4 060 lignes). La story est à corriger.
+    flatpulse.postal_code_table` la remplit (≈ 4 060 lignes). La story est à corriger.
 13. **Couche DB (#71) : signatures ajustées.** *Tranché le 09.11.2026.*
     - `insert_listing(listing: Listing, source_slug: str)` : un `Listing` (§11.11) ne
       porte pas sa source, et le pipeline connaît le slug (`SourceConfig`), pas

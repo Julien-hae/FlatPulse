@@ -102,7 +102,7 @@ CREATE TABLE notifications (
 -- plus d'adresses de la localité : 1290 est Versoix (GE) et Chavannes-des-Bois (VD).
 -- Données : répertoire officiel des localités, « Source : Office fédéral de
 -- topographie swisstopo ». Remplie et rafraîchie par
--- `python -m flatpulse.common.postal_codes` (TRUNCATE + COPY dans une transaction).
+-- `python -m flatpulse.postal_code_table` (TRUNCATE + COPY dans une transaction).
 CREATE TABLE postal_codes (
     postal_code  VARCHAR(4)  NOT NULL,
     locality     TEXT        NOT NULL,
