@@ -96,6 +96,11 @@ class TestRateLimiter(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(ValueError):
             RateLimiter({"naef": 0})
 
+    async def test_negative_rate_raises(self) -> None:
+        """A negative rate must not disable the limiter: it is refused like zero."""
+        with self.assertRaises(ValueError):
+            RateLimiter({"comptoir": -6})
+
     async def test_unconfigured_slug_raises(self) -> None:
         """Test that accessing an unconfigured slug raises a KeyError."""
         limiter = RateLimiter({"naef": 10})

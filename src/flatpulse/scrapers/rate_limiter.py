@@ -2,50 +2,61 @@
 
 import asyncio
 import time
+from collections.abc import Mapping
 
 
 class RateLimiter:
     """Rate limiter that spaces requests using one-token buckets for each slug."""
 
-    def __init__(self, rpm_by_slug: dict[str, int]) -> None:
-        """Initialize the rate limiter with the given rate limits by slug.
+    def __init__(self, rpm_by_slug: Mapping[str, int]) -> None:
+        """Give each slug its own bucket, refilled at its rate per minute.
 
-        Args:
-            rpm_by_slug (dict[str, int]): A dictionary mapping slugs to their rate limits per minute.
+        Raises:
+            ValueError: A rate is zero or negative.
         """
-        self.rpm_by_slug = rpm_by_slug
-        self._buckets = {}
-        for key, val in rpm_by_slug.items():
-            self._buckets[key] = TokenBucket(rpm=val)
+        self._buckets = {slug: TokenBucket(rpm) for slug, rpm in rpm_by_slug.items()}
 
     async def acquire(self, slug: str) -> None:
-        """Acquire a token from the rate limiter for the given slug."""
-        if slug not in self._buckets:
-            raise KeyError(f"Slug '{slug}' is not configured in the rate limiter.")
-        bucket = self._buckets[slug]
+        """Wait until the bucket of `slug` grants a token, and take it.
+
+        Raises:
+            KeyError: `slug` has no bucket.
+        """
+        bucket = self._bucket(slug)
         delay = bucket.try_acquire()
         while delay > 0.0:
             await asyncio.sleep(delay)
             delay = bucket.try_acquire()
 
     def can_acquire(self, slug: str) -> bool:
-        """Check if a token can be acquired for the given slug."""
+        """Whether the bucket of `slug` holds a token, without taking it.
+
+        Raises:
+            KeyError: `slug` has no bucket.
+        """
+        return self._bucket(slug).can_acquire()
+
+    def _bucket(self, slug: str) -> TokenBucket:
+        """The bucket of `slug`; an unknown slug is an error, never an unlimited rate."""
         if slug not in self._buckets:
             raise KeyError(f"Slug '{slug}' is not configured in the rate limiter.")
-        return self._buckets[slug].can_acquire()
+        return self._buckets[slug]
 
 
 class TokenBucket:
     """One-token bucket enforcing a minimum interval of 60 / rpm seconds."""
 
     def __init__(self, rpm: int) -> None:
-        """Initialize the token bucket with the given rate per minute.
+        """Start with one token, refilled at `rpm` tokens per minute.
 
-        Args:
-            rpm (int): The rate per minute for the token bucket.
+        Raises:
+            ValueError: `rpm` is zero or negative. A negative rate would compute
+                negative waits, which `RateLimiter.acquire` reads as "no wait".
         """
-        if rpm == 0:
-            raise ValueError("Rate per minute (rpm) must be greater than 0.")
+        if rpm <= 0:
+            raise ValueError(
+                f"Rate per minute (rpm) must be greater than 0, got {rpm}."
+            )
         self._capacity = 1.0
         self._rate = rpm / 60.0
         self._tokens = 1.0
@@ -70,6 +81,4 @@ class TokenBucket:
         if self._tokens >= 1:
             self._tokens -= 1
             return 0.0
-        if self._rate == 0:
-            return float("inf")
         return (1 - self._tokens) / self._rate
