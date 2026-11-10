@@ -86,6 +86,29 @@ fiches distinctes. À recalculer au prochain passage du notebook.
   entre Versoix (GE) et Chavannes-des-Bois (VD) : la localité tranche.
 - Pas de rue dans le payload : slug du link ou fiche détail.
 
+### Fiche détail : description et adresse (spike #103, relevé du 10.11.2026)
+
+Le payload ne porte ni description ni rue ; la fiche (`link`) les porte toutes les deux.
+
+- Rendu : HTML statique, 170 à 190 Ko, ≈ 2,3 s par fiche. Aucun endpoint JSON de détail
+  trouvé dans la page.
+- `robots.txt` : pas de Crawl-delay, les fiches `/location/…` ne sont pas interdites.
+- Description : `.property-description` (texte). La `meta[name=description]` est
+  tronquée ou vide : ne pas s'y fier.
+- Adresse : dans le `h1`, « Appartement 4 pièces - Promenade de l'Europe 5 Genève » :
+  le texte après le tiret, moins la localité.
+- Signal de changement : `date_modification` est rempli sur les 965 props du payload
+  (de 4 à 106 props modifiées par jour du 01.11 au 09.11.2026). Une fiche n'est donc à
+  lire que pour une annonce nouvelle ou dont `date_modification` a bougé.
+- Volume : 347 logements (`APP`, `MAI`) sur 965. Les lire tous une fois prend ≈ 35 min à
+  10 rpm ; en régime établi, quelques fiches par jour.
+- Test : 3 fiches lues à 6 s d'écart, 3 réponses 200 sans blocage. L'échantillon est
+  petit : le débit de 10 rpm reste à confirmer au premier remplissage complet.
+
+**Décision** : lire la fiche des seuls logements nouveaux ou modifiés, avec le cache de
+#120 (`version` = `date_modification`). Parkings et commerces gardent `description` et
+`address` à `None`.
+
 ## Agence Immobilière Rodolphe Burger SA (`burger`)
 
 - Accès : `GET www.burger-sa.ch/sitemap.php` (liste des fiches) puis `GET /fr/louer/<slug>` (une fiche = une annonce)
@@ -123,6 +146,12 @@ fiches distinctes. À recalculer au prochain passage du notebook.
 - external_id = URL complète : deux fiches partagent le préfixe …mont-bla.
 - Hôte canonique www.burger-sa.ch (celui du sitemap et du `link rel=canonical`).
 - Type de bien = première ligne des caractéristiques : Appartement, Studio, Maison ; Place ouverte, Place couverte (vue le 08.11.2026), Bureau, Arcade, Garage individuel, Dépôt, Commerce. Non filtré par le scraper.
+- Le `lastmod` du sitemap n'est **pas** une date de modification : le 10.11.2026, 42 des
+  44 fiches `/fr/louer/` portent la date du jour (2026-11-10), comme 10 sur 12 portaient
+  le 30.10 dans le sitemap du 30.10. Il ne dit donc pas qu'un prix a changé. Utilisé
+  comme `version` du cache (#120), il change une fois par jour : toutes les fiches sont
+  relues une fois par jour (≈ 11 min), et une modification est vue le lendemain au plus
+  tard. Une annonce nouvelle, elle, se reconnaît à son URL absente du cache, sans lui.
 - Le canton n'est écrit nulle part sur la fiche : seul le NPA le donne.
 - « 0.0 pièces » affiché quand le nombre est inconnu : c'est `None`.
 - Le 21.10.2026, une fiche sur six enchaînées a coupé la connexion sans réponse (`RemoteProtocolError`), puis répondu normalement : raison de plus pour espacer les requêtes ; une fiche en échec est loguée et ignorée, sans faire tomber le poll.
