@@ -77,12 +77,18 @@ class HttpScraper(AbstractScraper):
         city, here, so every scraper gets it without writing a line. An invalid
         listing is logged and skipped, the poll goes on: its ValueError names the
         faulty field and the listing's URL.
+
+        A parser that crashes on a page it did not expect is skipped the same way,
+        logged as an error with its traceback: a bug on one listing must not lose
+        the others, nor go unseen.
         """
         try:
             return fill_missing_canton(parse(), self.canton_lookup)
         except ValueError as error:
             logger.warning(SKIPPED_INVALID_LISTING, error)
-            return None
+        except Exception as error:
+            logger.exception(SKIPPED_INVALID_LISTING, repr(error))
+        return None
 
 
 class CatalogueScraper(HttpScraper):

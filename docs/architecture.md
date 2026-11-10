@@ -200,7 +200,9 @@ message, si un champ requis est vide, si `external_url` n'est pas en `http(s)://
 un montant, `nb_rooms` ou `surface_m2` vaut `0` ou moins, si un texte optionnel est vide,
 ou si `canton` n'est pas deux majuscules. Une annonce invalide est un bug de scraper, pas
 une raison de perdre la source : `HttpScraper._build_or_skip()` la logue en WARNING et
-le poll continue. Les deux formes de scraper passent par lui.
+le poll continue. Un parseur qui plante sur une page inattendue (toute autre exception)
+est sauté de la même façon, logué en ERROR avec sa trace : le bug se voit, les autres
+annonces sortent. Les deux formes de scraper passent par lui.
 
 **Fingerprint** (`Listing.fingerprint`) : `SHA-256(external_url + title +
 str(price_chf))`, 64 caractères hex, déterministe, inchangé par #114. Un changement de prix change le fingerprint → détection de baisse de prix.

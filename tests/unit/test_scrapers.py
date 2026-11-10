@@ -51,6 +51,16 @@ class AlternatingInvalidScraper(MinimalScraper):
         return listing
 
 
+class CrashingParserScraper(MinimalScraper):
+    """Scraper test double whose parser crashes on the middle listing."""
+
+    def parse_listing(self, node: Selector) -> Listing:
+        """Listing 102 hits a bug of the parser itself, not an invalid field."""
+        if node.attrib.get("data-id") == "102":
+            raise AttributeError("'NoneType' object has no attribute 'strip'")
+        return super().parse_listing(node)
+
+
 class PostalCodeScraper(MinimalScraper):
     """Scraper test double publishing a postal code, and a canton for listing 102."""
 
@@ -164,6 +174,25 @@ class TestHttpScraper(unittest.IsolatedAsyncioTestCase):
         [warning] = captured.output
         self.assertIn("price_chf", warning)
         self.assertIn("https://example.com/annonces/102", warning)
+
+    @patch("httpx.AsyncClient.get", new_callable=AsyncMock)
+    async def test_crashing_parser_loses_one_listing_not_the_poll(
+        self, mock_get: AsyncMock
+    ) -> None:
+        """A parser bug on one listing is logged with its traceback; the others come out."""
+        mock_get.return_value = response_from_fixture("sample_listing.html")
+        scraper = CrashingParserScraper(
+            rate_limiter=AsyncMock(spec=RateLimiter), canton_lookup=CANTON_LOOKUP
+        )
+
+        with self.assertLogs("flatpulse.scrapers.base", level="ERROR") as captured:
+            result = await scraper.fetch_listings()
+
+        self.assertEqual([listing.external_id for listing in result], ["101", "103"])
+        [error] = captured.output
+        self.assertIn("Skipped invalid listing", error)
+        self.assertIn("AttributeError", error)
+        self.assertIn("Traceback", error)
 
     async def test_run_does_not_sleep(self) -> None:
         """run delegates to fetch_listings without a separate delay."""
