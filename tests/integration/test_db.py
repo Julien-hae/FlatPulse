@@ -13,6 +13,7 @@ with docker compose:
 
 import os
 import unittest
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
 from flatpulse import db
@@ -81,6 +82,21 @@ class TestDatabaseLayer(unittest.IsolatedAsyncioTestCase):
                 }
             ],
         )
+
+    async def test_schema_accepts_every_property_type(self) -> None:
+        """The CHECK of `listings.property_type` lists the values of PropertyType.
+
+        The enum and the SQL list are written twice; a type added to the enum
+        only would be refused by the base at the first such listing.
+        """
+        for property_type in PropertyType:
+            with self.subTest(property_type=property_type):
+                listing = replace(
+                    LISTING,
+                    external_id=property_type.value,
+                    property_type=property_type,
+                )
+                await db.insert_listing(listing, source_slug="naef")
 
     async def test_insert_listing_unknown_source_raises(self) -> None:
         with self.assertRaises(LookupError):
