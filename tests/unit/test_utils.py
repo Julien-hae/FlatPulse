@@ -7,6 +7,7 @@ from flatpulse.common.models import PropertyType
 from flatpulse.common.utils import (
     canton_code,
     is_monthly_rent,
+    parse_charges,
     parse_floor,
     parse_monthly_rent,
     parse_property_type,
@@ -172,3 +173,20 @@ class TestUtils(unittest.TestCase):
         for text, expected in cases.items():
             with self.subTest(text=text):
                 self.assertEqual(is_monthly_rent(text), expected)
+
+    def test_parse_charges(self) -> None:
+        """Charges count only with a known, monthly rent: they carry no unit."""
+        cases = (
+            # (charges, rent, price_chf) -> charges_chf
+            (("CHF 270.—", "CHF 2'330.— / mois", 233000), 27000),
+            (("CHF 217.-", "CHF 2'550.-", 255000), 21700),
+            (("CHF 24.—", "CHF 260.— / m2 / année", 463667), None),
+            (("CHF 300.—", "CHF 24'000.— / année", 200000), None),
+            (("CHF 270.—", "Sur demande", None), None),
+            (("CHF 270.—", None, 233000), None),
+            (("CHF 0.-", "CHF 2'330.— / mois", 233000), None),
+            ((None, "CHF 2'330.— / mois", 233000), None),
+        )
+        for (charges, rent, price_chf), expected in cases:
+            with self.subTest(charges=charges, rent=rent, price_chf=price_chf):
+                self.assertEqual(parse_charges(charges, rent, price_chf), expected)

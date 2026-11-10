@@ -14,6 +14,8 @@ _UNIT = r"(?:/|\bpar\b|\bpro\b)\s*"
 _PER_MONTH = re.compile(_UNIT + r"(?:mois|monat)\b", re.I)
 _PER_YEAR = re.compile(_UNIT + r"(?:an|année|jahr)\b|\bp\.\s?a\.", re.I)
 _PER_M2 = re.compile(_UNIT + r"m[²2]\b", re.I)
+# Francs with an apostrophe or a space between thousands, then optional centimes.
+_PRICE = re.compile(r"(?P<francs>\d(?:[\d'\u2019\s]*\d)?)(?:\.(?P<cents>\d{1,2}))?")
 _ORDINAL = r"(?:er|e|ème|eme)?"
 _FLOOR = re.compile(
     rf"\b(?:(?P<ground>rdc|rez)|(?P<basement>\d+){_ORDINAL} sous-sol"
@@ -70,10 +72,7 @@ def parse_swiss_price(text: str | None) -> int | None:
     """Format a Swiss price string into an integer representing the price in centimes."""
     if text is None:
         return None
-    match = re.search(
-        r"(?P<francs>\d(?:[\d'\u2019\s]*\d)?)(?:\.(?P<cents>\d{1,2}))?",
-        text,
-    )
+    match = _PRICE.search(text)
     if match is None:
         return None
     francs = int(re.sub(r"[^\d]", "", match.group("francs")))
@@ -97,9 +96,23 @@ def parse_monthly_rent(text: str | None, surface_m2: float | None) -> int | None
         if surface_m2 is None:
             return None
         monthly *= surface_m2
-    if _PER_YEAR.search(text) and not _PER_MONTH.search(text):
+    if _is_yearly(text):
         monthly /= 12
     return round(monthly)
+
+
+def parse_charges(
+    text: str | None, rent: str | None, price_chf: int | None
+) -> int | None:
+    """Monthly charges in centimes, None unless they go with a known, monthly rent.
+
+    Agencies show charges without a unit: next to the rent line `rent` of a
+    yearly or per-m² rent, or of a rent on request (`price_chf` is None), nothing
+    says what they are worth per month. Charges of zero are no charges: None.
+    """
+    if price_chf is None or rent is None or not is_monthly_rent(rent):
+        return None
+    return parse_swiss_price(text) or None
 
 
 def parse_rooms(text: str | None) -> float | None:
@@ -190,6 +203,9 @@ def is_monthly_rent(text: str) -> bool:
 
     Agencies show charges without a unit; they can only be added to a monthly rent.
     """
-    if _PER_M2.search(text):
-        return False
-    return not _PER_YEAR.search(text) or bool(_PER_MONTH.search(text))
+    return not _PER_M2.search(text) and not _is_yearly(text)
+
+
+def _is_yearly(text: str) -> bool:
+    """Whether a rent line gives a yearly amount: « / an », and no « / mois »."""
+    return bool(_PER_YEAR.search(text)) and not _PER_MONTH.search(text)
