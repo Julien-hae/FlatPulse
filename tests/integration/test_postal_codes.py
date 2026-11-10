@@ -12,7 +12,8 @@ import httpx
 import psycopg
 
 from flatpulse import db
-from flatpulse.common.postal_codes import CantonLookup, PostalCode, refresh
+from flatpulse.common.postal_codes import PostalCode
+from flatpulse.postal_code_table import load_canton_lookup, refresh
 from tests.helpers import swisstopo_response
 from tests.unit.test_postal_codes import extract_rows
 
@@ -40,14 +41,14 @@ class TestPostalCodesRefresh(unittest.IsolatedAsyncioTestCase):
     async def test_postal_codes_refresh_replaces_the_table(self) -> None:
         """The refresh is the only write: the table becomes exactly swisstopo's rows."""
         with patch(
-            "flatpulse.common.postal_codes.httpx.get",
+            "flatpulse.postal_code_table.httpx.get",
             return_value=swisstopo_response(),
         ):
             count = await refresh()
 
         self.assertEqual(await self.table(), set(extract_rows()))
         self.assertEqual(count, len(extract_rows()))
-        lookup = await CantonLookup.load()
+        lookup = await load_canton_lookup()
         self.assertEqual(lookup.canton("1290", "Versoix"), "GE")
 
     async def test_postal_codes_refresh_keeps_the_table_when_swisstopo_is_down(
@@ -56,7 +57,7 @@ class TestPostalCodesRefresh(unittest.IsolatedAsyncioTestCase):
         """A swisstopo outage never empties the table."""
         with (
             patch(
-                "flatpulse.common.postal_codes.httpx.get",
+                "flatpulse.postal_code_table.httpx.get",
                 side_effect=httpx.ConnectError("Network is unreachable"),
             ),
             self.assertRaises(httpx.ConnectError),

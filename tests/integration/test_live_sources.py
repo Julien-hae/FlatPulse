@@ -6,7 +6,8 @@ import os
 import unittest
 
 from flatpulse.common.models import Listing, PropertyType
-from flatpulse.common.postal_codes import CantonLookup, download_swisstopo
+from flatpulse.common.postal_codes import CantonLookup
+from flatpulse.postal_code_table import download_swisstopo
 from flatpulse.scrapers.base import HttpScraper
 from flatpulse.scrapers.rate_limiter import RateLimiter
 from flatpulse.scrapers.sources.burger import BurgerScraper

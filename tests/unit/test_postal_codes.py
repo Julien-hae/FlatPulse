@@ -1,15 +1,13 @@
-"""Unit tests for the postal code table: swisstopo parsing, canton lookup, completion."""
+"""Unit tests for postal codes in memory: swisstopo parsing, canton lookup, completion."""
 
-import os
 import unittest
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import Mock
 
 from flatpulse.common.models import Listing
 from flatpulse.common.postal_codes import (
     CantonLookup,
     PostalCode,
     fill_missing_canton,
-    main,
     rows_from_swisstopo,
 )
 from tests.helpers import SWISSTOPO_EXTRACT
@@ -37,7 +35,7 @@ class TestRowsFromSwisstopo(unittest.TestCase):
         self.assertNotIn("9485", {row.postal_code for row in extract_rows()})
 
 
-class TestCantonLookup(unittest.IsolatedAsyncioTestCase):
+class TestCantonLookup(unittest.TestCase):
     def setUp(self) -> None:
         self.lookup = CantonLookup(extract_rows())
 
@@ -65,30 +63,6 @@ class TestCantonLookup(unittest.IsolatedAsyncioTestCase):
                 self.assertIsNone(self.lookup.canton(postal_code, locality))
             self.assertIn(postal_code, logs.output[0])
 
-    async def test_load_reads_the_table_once(self) -> None:
-        """The lookup is the table read once, by a SELECT, then kept in memory."""
-        rows = [{"postal_code": "1290", "locality": "Versoix", "canton": "GE"}]
-        with patch(
-            "flatpulse.common.postal_codes.db.get_postal_codes",
-            AsyncMock(return_value=rows),
-        ) as get_postal_codes:
-            lookup = await CantonLookup.load()
-
-        get_postal_codes.assert_awaited_once()
-        self.assertEqual(lookup.canton("1290", "Versoix"), "GE")
-
-    async def test_load_empty_table_raises(self) -> None:
-        """An empty table stops the startup: every canton would be None silently."""
-        with (
-            patch(
-                "flatpulse.common.postal_codes.db.get_postal_codes",
-                AsyncMock(return_value=[]),
-            ),
-            self.assertRaises(RuntimeError) as raised,
-        ):
-            await CantonLookup.load()
-        self.assertIn("python -m flatpulse.common.postal_codes", str(raised.exception))
-
 
 class TestFillMissingCanton(unittest.TestCase):
     def test_pipeline_fills_missing_canton_from_postal_code(self) -> None:
@@ -113,14 +87,3 @@ class TestFillMissingCanton(unittest.TestCase):
         self.assertEqual(fill_missing_canton(naef, lookup).canton, "VD")
         self.assertEqual(fill_missing_canton(comptoir, lookup).canton, "VS")
         lookup.canton.assert_called_once_with("1070", "Puidoux")
-
-
-class TestRefreshCommand(unittest.TestCase):
-    def test_main_without_database_url_exits(self) -> None:
-        """The refresh writes to PostgreSQL: no DATABASE_URL, a clear stop."""
-        with (
-            patch.dict(os.environ, clear=True),
-            self.assertRaises(SystemExit) as raised,
-        ):
-            main()
-        self.assertIn("DATABASE_URL", str(raised.exception))

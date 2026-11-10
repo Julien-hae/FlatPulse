@@ -1,40 +1,26 @@
-"""Swiss postal code -> canton: the `postal_codes` table, its refresh and its lookup.
+"""Swiss postal code -> canton, in memory: the rows, the lookup, the completion.
 
-The table (`sql/schema.sql`) has one row per (postal code, locality), with the canton
-holding most of the locality's addresses. It is built from swisstopo's official
-directory of localities (open data, « Source : Office fédéral de topographie
-swisstopo ») and refreshed, or filled on a new database, by running this module:
-
-    python -m flatpulse.common.postal_codes
+One row per (postal code, locality), with the canton holding most of the locality's
+addresses, as swisstopo's official directory of localities gives them (open data,
+« Source : Office fédéral de topographie swisstopo »).
 
 Every scraper completes a canton the agency leaves out from the postal code
-(`fill_missing_canton`, applied by `HttpScraper`), with a `CantonLookup` loaded once
-per process from the table and handed to the scrapers at construction.
+(`fill_missing_canton`, applied by `HttpScraper`), with a `CantonLookup` handed to it
+at construction. Nothing here touches the network or the database: filling the
+`postal_codes` table and reading it at startup is `flatpulse.postal_code_table`.
 """
 
-import asyncio
 import csv
 import dataclasses
 import io
 import logging
-import os
-import zipfile
 from collections import defaultdict
 from collections.abc import Iterable
-from typing import NamedTuple, Self
+from typing import NamedTuple
 
-import httpx
-
-from flatpulse import db
 from flatpulse.common.models import Listing
 
 logger = logging.getLogger(__name__)
-
-SWISSTOPO_LOCALITIES_URL = (
-    "https://data.geo.admin.ch/ch.swisstopo-vd.ortschaftenverzeichnis_plz/"
-    "ortschaftenverzeichnis_plz/ortschaftenverzeichnis_plz_2056.csv.zip"
-)
-REFRESH_COMMAND = "python -m flatpulse.common.postal_codes"
 
 
 class PostalCode(NamedTuple):
@@ -65,32 +51,8 @@ def rows_from_swisstopo(text: str) -> list[PostalCode]:
     )
 
 
-def download_swisstopo() -> list[PostalCode]:
-    """Download swisstopo's directory of localities and turn it into table rows.
-
-    Raises:
-        httpx.HTTPError: swisstopo is unreachable or answers an error.
-    """
-    response = httpx.get(SWISSTOPO_LOCALITIES_URL, timeout=30, follow_redirects=True)
-    response.raise_for_status()
-    with zipfile.ZipFile(io.BytesIO(response.content)) as archive:
-        [name] = [item for item in archive.namelist() if item.endswith(".csv")]
-        return rows_from_swisstopo(archive.read(name).decode("utf-8-sig"))
-
-
-async def refresh() -> int:
-    """Replace the table with swisstopo's directory; return the number of rows.
-
-    The download comes first: swisstopo down raises `httpx.HTTPError` before the
-    table is touched, and it keeps its last version.
-    """
-    rows = download_swisstopo()
-    await db.replace_postal_codes(rows)
-    return len(rows)
-
-
 class CantonLookup:
-    """The postal code table in memory: postal code -> casefolded locality -> canton."""
+    """Postal code rows in memory: postal code -> casefolded locality -> canton."""
 
     def __init__(self, rows: Iterable[PostalCode]) -> None:
         """Index `rows` by postal code, then by locality, case aside."""
@@ -98,20 +60,6 @@ class CantonLookup:
         for row in rows:
             localities = self._localities.setdefault(row.postal_code, {})
             localities[row.locality.casefold()] = row.canton
-
-    @classmethod
-    async def load(cls) -> Self:
-        """Read the `postal_codes` table, once, at startup.
-
-        Raises:
-            RuntimeError: The table is empty, so no canton could ever be completed.
-        """
-        rows = await db.get_postal_codes()
-        if not rows:
-            raise RuntimeError(
-                f"The postal_codes table is empty: fill it with `{REFRESH_COMMAND}`"
-            )
-        return cls(PostalCode(**row) for row in rows)
 
     def canton(self, postal_code: str | None, locality: str | None) -> str | None:
         """Canton of a Swiss postal code, the locality deciding a shared one.
@@ -151,28 +99,3 @@ def fill_missing_canton(listing: Listing, lookup: CantonLookup) -> Listing:
     return dataclasses.replace(
         listing, canton=lookup.canton(listing.postal_code, listing.city)
     )
-
-
-async def _refresh_database(database_url: str) -> int:
-    """Refresh the table of the database at `database_url`."""
-    await db.open_pool(database_url)
-    try:
-        return await refresh()
-    finally:
-        await db.close_pool()
-
-
-def main() -> None:
-    """Refresh the table from swisstopo; swisstopo down leaves it as it was."""
-    database_url = os.environ.get("DATABASE_URL")
-    if not database_url:
-        raise SystemExit(
-            "DATABASE_URL is missing: the postal code table is written to PostgreSQL "
-            "(see .env.example)"
-        )
-    count = asyncio.run(_refresh_database(database_url))
-    logger.info("Postal code table refreshed from swisstopo: %d rows", count)
-
-
-if __name__ == "__main__":
-    main()
