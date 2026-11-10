@@ -12,7 +12,7 @@ from flatpulse.common.utils import (
     parse_surface,
     parse_swiss_price,
 )
-from flatpulse.scrapers.base import HttpScraper
+from flatpulse.scrapers.base import CatalogueScraper
 
 logger = logging.getLogger(__name__)
 TYPE_CODE_TO_PROPERTY = {
@@ -23,7 +23,7 @@ TYPE_CODE_TO_PROPERTY = {
 }
 
 
-class NaefScraper(HttpScraper):
+class NaefScraper(CatalogueScraper):
     """Scrape rental listings from the Naef `get_all_props` endpoint."""
 
     base_url = (

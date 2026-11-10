@@ -2,7 +2,6 @@
 
 import logging
 import re
-from functools import partial
 from typing import NamedTuple
 from urllib.parse import urljoin
 
@@ -19,7 +18,7 @@ from flatpulse.common.utils import (
     parse_surface,
     parse_swiss_price,
 )
-from flatpulse.scrapers.base import HttpScraper
+from flatpulse.scrapers.base import FicheScraper
 
 logger = logging.getLogger(__name__)
 
@@ -47,38 +46,21 @@ class _Features(NamedTuple):
     surface_m2: float | None = None
 
 
-class BurgerScraper(HttpScraper):
+class BurgerScraper(FicheScraper):
     """Scrape every rental fiche listed in Burger's sitemap."""
 
     base_url = "https://www.burger-sa.ch/sitemap.php"
     slug = "burger"
 
-    async def fetch_listings(self) -> list[Listing]:
-        """Download the sitemap, then each rental fiche; skip failing or invalid ones."""
-        listings: list[Listing] = []
-        async with httpx.AsyncClient() as client:
-            sitemap = await self._get(client, self.base_url)
-            for node in self.listing_nodes(Selector(text=sitemap.text)):
-                url = node.xpath("text()").get("")
-                try:
-                    fiche = await self._get(client, url)
-                except httpx.HTTPError as error:
-                    logger.warning("Fiche %s ignorée : %r", url, error)
-                    continue
-                listing = self._parse_or_skip(
-                    partial(self.parse_listing, Selector(text=fiche.text), url)
-                )
-                if listing is not None:
-                    listings.append(listing)
-        return listings
+    async def fiche_urls(self, client: httpx.AsyncClient) -> list[str]:
+        """The rental fiches listed in the sitemap."""
+        sitemap = Selector(text=(await self._get(client, self.base_url)).text)
+        return sitemap.xpath(
+            "//*[local-name()='loc'][contains(text(), '/fr/louer/')]/text()"
+        ).getall()
 
-    def listing_nodes(self, page: Selector) -> list[Selector]:
-        """The sitemap entries of the rental fiches."""
-        return page.xpath("//*[local-name()='loc'][contains(text(), '/fr/louer/')]")
-
-    def parse_listing(self, node: Selector, url: str | None = None) -> Listing:
-        """Extract the listing from a fiche page, known by `url` or by its canonical link."""
-        url = url or node.css("link[rel=canonical]::attr(href)").get("")
+    def parse_fiche(self, node: Selector, url: str) -> Listing:
+        """Extract the listing from a fiche page; `url`, from the sitemap, is its id."""
         details = node.css("div.space-y-4.mt-6")
         address = [line.strip() for line in details.css("div.text-base::text").getall()]
         features = self.features(

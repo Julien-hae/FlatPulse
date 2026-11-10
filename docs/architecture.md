@@ -168,10 +168,21 @@ distribution/
 **`AbstractScraper`** (ABC) expose `fetch_listings() -> list[Listing]` (abstraite) et
 `run()` (concrète : rate limit → fetch → retour). On n'override pas `run()`.
 
-**`HttpScraper`** implémente le fetch HTTP + parsing `parsel.Selector`. Il reçoit à la
-construction un `RateLimiter` et un `CantonLookup` (§6.1), et complète le canton absent
-de chaque annonce depuis son NPA. C'est la seule
-implémentation nécessaire : le spike a confirmé qu'aucune des 13 régies analysées ne
+**`HttpScraper`** porte ce que tout scraper HTTP partage : il reçoit à la construction
+un `RateLimiter` et un `CantonLookup` (§6.1), fait passer chaque requête par `_get()`
+et complète le canton absent de chaque annonce depuis son NPA. Une régie n'en hérite
+pas directement mais de l'une de ses deux formes, selon la façon dont elle publie :
+
+- **`CatalogueScraper`** — un seul document porte toutes les annonces (Naef). La
+  régie implémente `listing_nodes(page)` et `parse_listing(node)`.
+- **`FicheScraper`** — un index nomme les fiches, chaque fiche est une annonce
+  (sitemap de Burger, catalogue paginé de Comptoir). La régie implémente
+  `fiche_urls(client)` et `parse_fiche(node, url)` ; la boucle, écrite une fois, saute
+  une fiche en échec de téléchargement (WARNING) sans perdre les autres. L'index en
+  échec, lui, remonte : la source est à terre.
+
+Aucune régie ne surcharge `fetch_listings`. C'est la seule famille
+d'implémentations nécessaire : le spike a confirmé qu'aucune des 13 régies analysées ne
 requiert un navigateur headless. Les sources « JS-rendered » (Naef, Bory, Rosset,
 Bernard Nicod) exposent toutes un endpoint JSON ou un état hydraté qu'on lit directement.
 
@@ -188,9 +199,8 @@ lettres), `description`, `images` (`tuple`). **Absent → `None`, jamais `0`, ja
 message, si un champ requis est vide, si `external_url` n'est pas en `http(s)://`, si
 un montant, `nb_rooms` ou `surface_m2` vaut `0` ou moins, si un texte optionnel est vide,
 ou si `canton` n'est pas deux majuscules. Une annonce invalide est un bug de scraper, pas
-une raison de perdre la source : `HttpScraper._parse_or_skip()` la logue en WARNING et
-le poll continue. Les `fetch_listings` surchargés (Burger, Comptoir) passent aussi par
-lui.
+une raison de perdre la source : `HttpScraper._build_or_skip()` la logue en WARNING et
+le poll continue. Les deux formes de scraper passent par lui.
 
 **Fingerprint** (`Listing.fingerprint`) : `SHA-256(external_url + title +
 str(price_chf))`, 64 caractères hex, déterministe, inchangé par #114. Un changement de prix change le fingerprint → détection de baisse de prix.
@@ -353,7 +363,7 @@ données fausses silencieusement.
   **Chaque `Listing` sort du scraper avec son canton, comme avec son NPA.** Un canton
   écrit par la source (Naef `adresse_canton`, Comptoir en-tête) est gardé tel quel ;
   absent, il se déduit du NPA et de la ville. La déduction n'est écrite dans aucun
-  `parse_listing` : `HttpScraper._parse_or_skip()` applique
+  `parse_listing` ni `parse_fiche` : `HttpScraper._build_or_skip()` applique
   `postal_codes.fill_missing_canton(listing, canton_lookup)` à chaque annonce, donc une
   nouvelle régie en hérite sans une ligne. Le `CantonLookup` est passé au scraper à la
   construction, comme le `RateLimiter` (paramètre obligatoire). Le canton n'est jamais

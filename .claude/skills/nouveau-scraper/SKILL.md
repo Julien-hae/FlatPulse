@@ -60,9 +60,17 @@ seulement implémenter.
 
 ## 4. Implémenter
 
-Fichier : `src/flatpulse/scrapers/sources/<slug>.py`. Une sous-classe de `HttpScraper`
-qui implémente `fetch_listings() -> list[dict]`. On n'override jamais `run()` : le rate
-limiting y est déjà câblé.
+Fichier : `src/flatpulse/scrapers/sources/<slug>.py`. Une sous-classe de l'une des deux
+formes de `HttpScraper` (`scrapers/base.py`), selon ce que le spike a établi :
+
+- **`CatalogueScraper`** si un seul document porte toutes les annonces (Naef) :
+  implémenter `listing_nodes(page)` et `parse_listing(node) -> Listing` ;
+- **`FicheScraper`** si un index nomme des fiches à lire une par une (Burger,
+  Comptoir) : implémenter `fiche_urls(client)` et `parse_fiche(node, url) -> Listing`.
+
+On ne surcharge ni `fetch_listings()` ni `run()` : la boucle, le rate limiting
+(`_get()`), le saut des annonces invalides et le canton déduit du NPA y sont déjà
+câblés.
 
 Règles qui ne se négocient pas :
 

@@ -18,6 +18,9 @@ YVORNE = (
     "10-minutes-pieds-du-centre-ville-dai"
 )
 GENEVA = "a-louer-appartement-de-4-pices-au-7me-tage"
+SATIGNY = (
+    "https://comptoir-immo.ch/location/place-de-parc/canton-de-geneve/satigny/279533/"
+)
 
 
 def fake_get(url: str) -> MagicMock:
@@ -38,6 +41,12 @@ class TestComptoirScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase
 
     scraper_class = ComptoirScraper
     fixture_name = "comptoir_cases.html"
+
+    def new_scraper(self) -> ComptoirScraper:
+        """A fresh ComptoirScraper, typed as such: some cases call its parse_fiche."""
+        return ComptoirScraper(
+            rate_limiter=AsyncMock(spec=RateLimiter), canton_lookup=CANTON_LOOKUP
+        )
 
     async def fetch_from_fixture(self) -> list[Listing]:
         """Serve the catalogue, then its fiches, without waiting the crawl-delay."""
@@ -147,8 +156,9 @@ class TestComptoirScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase
         """
         fiche = Selector(text=response_from_fixture("comptoir/279533.html").text)
 
-        listing = self.new_scraper().parse_listing(fiche)
+        listing = self.new_scraper().parse_fiche(fiche, SATIGNY)
 
+        self.assertEqual(listing.external_url, SATIGNY)
         self.assertEqual(listing.title, "Parking")
         self.assertIsNone(listing.price_chf)
         self.assertEqual(listing.city, "Satigny")
@@ -162,7 +172,7 @@ class TestComptoirScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase
             1,
         )
 
-        listing = self.new_scraper().parse_listing(Selector(text=html))
+        listing = self.new_scraper().parse_fiche(Selector(text=html), SATIGNY)
 
         self.assertIsNone(listing.price_chf)
         self.assertIsNone(listing.charges_chf)
@@ -249,7 +259,7 @@ class TestComptoirScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase
 
         with (
             patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get,
-            self.assertLogs("flatpulse.scrapers.sources.comptoir", "WARNING"),
+            self.assertLogs("flatpulse.scrapers.base", "WARNING"),
         ):
             mock_get.side_effect = get
             listings = await self.new_scraper().fetch_listings()
