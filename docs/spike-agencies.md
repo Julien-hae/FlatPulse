@@ -1,6 +1,7 @@
 # SPIKE — Accès aux annonces des 13 régies
 
-> Généré depuis `notebooks/spike-agences.ipynb` le 22.09.2026 07:29 UTC.
+> Généré depuis `notebooks/spike-agences.ipynb` le 22.09.2026 07:29 UTC. Le notebook
+> est un outil local, non versionné (`*.ipynb` est ignoré par git).
 > Naef : volumes et mapping actualisés au 30.10.2026 (#116).
 > Naef, Burger, Comptoir : localisation, titres et types revus après l'audit en direct
 > du 08.11.2026 (#131, résultats dans `docs/live-audit.md`).

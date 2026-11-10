@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "FlatPulse"
-version = "0.0.0" # Version is ignored and set by Tekton. Use pipeline to increase.
+version = "0.0.0"
 description = "🏠 Real-time Swiss real estate alerts — Faster than portals, smarter than Comparis, 10x cheaper than MieterPlus"
 authors = ["Haefelin Julien <jhaefelin-git@aliasdesk.ch>"]
 repository = "https://github.com/Julien-hae/FlatPulse.git"
@@ -10,7 +10,6 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "~3.14"
-numpy = "^2.3"                                      # NumPy is the fundamental package for array computing with Python.
 httpx = "^0.28.1"
 parsel = "^1.11.0"
 psycopg = {version = "^3.2", extras = ["binary", "pool"]}
@@ -23,9 +22,6 @@ pre-commit-hooks = "~4.5"                           # Some out-of-the-box hooks 
 ruff = ">=0.14.14,<0.18.0"                                   # Extremely fast Python linter and formatter, replaces black/isort/pydocstyle/pylint
 mypy = ">=1.18,<3.0"                                       # Tool for static type-checking
 ipykernel = "^7.3.0"
-
-[tool.poetry.scripts]
-entrypoint = 'flatpulse.main:cli'
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
@@ -74,7 +70,6 @@ known-first-party = ["flatpulse"]
 
 [tool.mypy]
 python_version = "3.14"
-# numpy removed numpy.typing.mypy_plugin in 2.3; the stubs are shipped inline now
 strict = true
 
 [tool.coverage.run]

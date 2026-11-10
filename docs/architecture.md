@@ -192,8 +192,8 @@ une raison de perdre la source : `HttpScraper._parse_or_skip()` la logue en WARN
 le poll continue. Les `fetch_listings` surchargés (Burger, Comptoir) passent aussi par
 lui.
 
-**Fingerprint** (`Listing.fingerprint`) : `SHA-256(external_url + title +
-str(price_chf))`, 64 caractères hex, déterministe, inchangé par #114. Un changement de prix change le fingerprint → détection de baisse de prix.
+**Fingerprint** (`Listing.fingerprint`) : `SHA-256("external_url|title|price_chf")`
+(les trois champs séparés par `|`), 64 caractères hex, déterministe, inchangé par #114. Un changement de prix change le fingerprint → détection de baisse de prix.
 
 **`RateLimiter`** : un token bucket par `slug`, capacité 1 et un jeton initial, refill de
 `RPM/60` token par seconde, basé sur `time.monotonic()`. `acquire()` attend (async) avant
@@ -300,14 +300,15 @@ court-circuite avant l'enrichissement, pour ne pas consommer de quota LLM.
 
 ## 6. Sources — état réel du parc
 
-Relevé du 22.09.2026, détail complet (URL, pagination, sélecteurs, mapping de champs et
+Relevé du 22.09.2026 (les trois régies du MVP : audit en direct du 08.11.2026,
+`docs/live-audit.md`), détail complet (URL, pagination, sélecteurs, mapping de champs et
 pièges) dans **`docs/spike-agencies.md`**. Aucune ne nécessite Playwright.
 
 | Régie | Slug | Statut | Accès | Fiches | Débit |
 |---|---|---|---|---|---|
-| Naef Immobilier | `naef` | **MVP** | `admin-ajax.php` JSON, tout le parc en 1 GET | 355 (58 GE) | poll 90-120 s |
-| Rodolphe Burger SA | `burger` | **MVP** | HTML, `?page=N`, 6/page | 32 (32 GE) | ~4 req/min |
-| Comptoir Immobilier | `comptoir` | **MVP** | HTML, `?page=N`, 24/page, puis une fiche par annonce | 375 (04.11.2026) | Crawl-delay 10 → **6 rpm** |
+| Naef Immobilier | `naef` | **MVP** | `admin-ajax.php` JSON, tout le parc en 1 GET | 959 (387 GE) | poll 90-120 s |
+| Rodolphe Burger SA | `burger` | **MVP** | sitemap XML, puis une fiche HTML par annonce | 43 (43 GE) | ~4 req/min |
+| Comptoir Immobilier | `comptoir` | **MVP** | HTML, `?page=N`, 24/page, puis une fiche par annonce | 363 (207 GE) | Crawl-delay 10 → **6 rpm** |
 | Rosset & Cie | `rosset` | phase 2 | API REST publique JSON | 165 (105 GE) | à mesurer |
 | Bory & Cie | `bory` | phase 2 | `__NEXT_DATA__`, curseur Relay | 20/28 | à mesurer |
 | Moser Vernet | `moservernet` | phase 2 | HTML, catalogue entier en 1 page (2,9 Mo) | 150 | **GET conditionnel obligatoire** |
@@ -582,10 +583,9 @@ hébergées en Suisse, suppression via `/delete` dans le bot.
 Points où les stories, le spike et le code divergent aujourd'hui. À arbitrer avant
 d'implémenter les stories concernées.
 
-1. **Migration de l'arborescence des tests.** Le découpage retenu est celui des stories
-   (§8). Le repo a encore `tests/flatpulse/`, hérité de CookieBlueprint, avec les tests
-   du scaffold `greeter`/`main`. À migrer vers `tests/unit/` — c'est un prérequis des
-   commandes `python -m unittest tests.unit.test_x` que les stories donnent.
+1. **Migration de l'arborescence des tests.** *Clos :* le découpage des stories (§8) est
+   en place. `tests/flatpulse/` et les tests du scaffold `greeter`/`main`, hérités de
+   CookieBlueprint, n'existent plus ; `python -m unittest tests.unit.test_x` fonctionne.
 2. **Naef : HTML ou JSON ?** La story #43 parle d'une fixture `naef_listing.html` et de
    sélecteurs CSS. Le spike a établi que Naef est un endpoint JSON et la fixture livrée
    est `tests/fixtures/naef_cases.json`. La story est à corriger.
@@ -601,11 +601,10 @@ d'implémenter les stories concernées.
    les exemples gagneraient à être réécrits avec des communes genevoises.
 6. **Version de Python.** `pyproject.toml` impose `~3.14`, la story #66 installe
    `python3.12` sur le VPS. Aligner sur 3.14.
-7. **Dépendances manquantes.** `pyproject.toml` déclare `numpy`, `httpx`, `parsel`
-   et, depuis #71, `psycopg[binary,pool]`. Manquent `openai`, `python-telegram-bot`,
-   `aiosmtplib`, `prometheus-client`, `alembic` — à ajouter par la story qui les
-   introduit, pas en bloc (YAGNI). `numpy` est un reliquat du template : à retirer s'il
-   ne sert à rien.
+7. **Dépendances manquantes.** `pyproject.toml` déclare `httpx`, `parsel` et, depuis
+   #71, `psycopg[binary,pool]`. Manquent `openai`, `python-telegram-bot`, `aiosmtplib`,
+   `prometheus-client` — à ajouter par la story qui les introduit, pas en bloc (YAGNI).
+   `numpy`, reliquat du template importé nulle part, a été retiré (#151).
 8. **Redis.** Lancé par le `docker-compose.yml` (#63), mais le MVP fonctionne avec des
    dicts en mémoire (rate limiter, dedup, cache LLM) et aucun code ne s'y connecte. Ne le
    brancher que quand le multi-worker l'impose.
