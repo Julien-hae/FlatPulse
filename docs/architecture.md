@@ -618,8 +618,10 @@ d'implémenter les stories concernées.
    Burger, à chaque page et fiche Comptoir, et à l'unique GET Naef : tout passe par
    `HttpScraper._get()`. Conséquence : à 4 rpm, un poll Burger complet dure ≈ 11 min
    (sitemap + 42 fiches au 30.10.2026), au-delà de l'objectif d'alerte < 3 min ; ne
-   télécharger que les fiches dont le `lastmod` du sitemap a changé est la piste, hors
-   #121.
+   télécharger que les fiches nouvelles est la piste (#120), hors #121. Le `lastmod` du
+   sitemap ne date pas une modification : il vaut la date du jour sur presque toutes
+   les fiches (relevé du 10.11.2026, `docs/spike-agencies.md`). Il sert de version
+   quotidienne : une relecture complète par jour, les nouveautés reconnues à leur URL.
 10. **Comptoir : adresse et description absentes de la page liste.** *Tranché le
     04.11.2026 : le scraper lit la fiche de chaque annonce.* Les cartes de
     `comptoir-immo.ch/location/` ne donnent que « Commune, Canton », aucune description,
