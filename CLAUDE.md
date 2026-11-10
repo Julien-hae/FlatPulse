@@ -80,7 +80,7 @@ fermée avec un résumé.
   milliers, tiret cadratin autant que tiret simple, annonces en FR **et** en DE.
 - **Champ absent → `None`, jamais une exception.** Un scraper ne crashe pas sur une
   annonce incomplète.
-- **Fingerprint** : `SHA-256(external_url + title + str(price_chf))`. Dedup sur
+- **Fingerprint** : `SHA-256("external_url|title|price_chf")`. Dedup sur
   `source_slug:external_id`. Attention aux régies dont les fiches ne diffèrent que par
   la query string — une dedup qui tronque `?ref=` fait disparaître des annonces.
 - **Rate limit par source**, valeurs mesurées dans `docs/spike-agencies.md`. Un ban =
@@ -95,7 +95,7 @@ fermée avec un résumé.
   Variables d'environnement uniquement.
 - **Scraping éthique** : respecter le débit documenté pour la régie, pas un rythme
   arbitraire.
-- **Nouveau scraper** = fixture figée dans `tests/fixtures/` + test dédié + les 4
+- **Nouveau scraper** = fixture figée dans `tests/fixtures/` + test dédié + les 5
   contrats de `ScraperContractMixin`, et mise à jour de `docs/spike-agencies.md` si la
   source a changé de comportement.
 - **Fixtures : URLs valides uniquement.** Une annonce dont l'URL est cassée (ex. gabarit
