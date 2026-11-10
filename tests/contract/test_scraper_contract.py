@@ -2,6 +2,7 @@
 
 import unittest
 from collections.abc import Mapping
+from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, patch
 
 from flatpulse.common.models import Listing
@@ -9,8 +10,15 @@ from flatpulse.scrapers.base import HttpScraper
 from flatpulse.scrapers.rate_limiter import RateLimiter
 from tests.helpers import CANTON_LOOKUP, response_from_fixture
 
+# For mypy the mixin is a TestCase, so its tests can assert; at runtime it is a plain
+# class, so unittest does not collect it as a test of its own.
+if TYPE_CHECKING:
+    _TestCase = unittest.IsolatedAsyncioTestCase
+else:
+    _TestCase = object
 
-class ScraperContractMixin:
+
+class ScraperContractMixin(_TestCase):
     """Contract tests shared by every scraper, and helpers for its named cases.
 
     Combine with `unittest.IsolatedAsyncioTestCase` and set `scraper_class` and
@@ -41,7 +49,6 @@ class ScraperContractMixin:
         Only the given fields are compared, so a case pins the fields that are right
         today and leaves the others to the stories that fix them.
         """
-        assert isinstance(self, unittest.TestCase)
         listings = await self.fetch_from_fixture()
         listing = next(
             (item for item in listings if item.external_id == external_id), None
@@ -55,13 +62,11 @@ class ScraperContractMixin:
     async def test_contract_fixture_is_not_empty(self) -> None:
         """The fixture yields at least one listing, so the other contracts check something."""
         result = await self.fetch_from_fixture()
-        assert isinstance(self, unittest.TestCase)
         self.assertTrue(result, f"{self.fixture_name} ne produit aucune annonce")
 
     async def test_contract_returns_list(self) -> None:
-        """fetch_listings returns a list of dicts."""
+        """fetch_listings returns a list of Listing."""
         result = await self.fetch_from_fixture()
-        assert isinstance(self, unittest.TestCase)
         self.assertIsInstance(result, list)
         for listing in result:
             self.assertIsInstance(listing, Listing)
@@ -69,7 +74,6 @@ class ScraperContractMixin:
     async def test_contract_listings_are_immutable(self) -> None:
         """Listings are frozen down to their images, so they can be hashed."""
         result = await self.fetch_from_fixture()
-        assert isinstance(self, unittest.TestCase)
         for listing in result:
             self.assertIsInstance(listing.images, tuple)
             hash(listing)
@@ -77,7 +81,6 @@ class ScraperContractMixin:
     async def test_contract_has_fingerprint(self) -> None:
         """Each listing carries a 64-character hex SHA-256 fingerprint."""
         result = await self.fetch_from_fixture()
-        assert isinstance(self, unittest.TestCase)
         for listing in result:
             fingerprint = listing.fingerprint
             self.assertIsInstance(fingerprint, str)
@@ -88,7 +91,6 @@ class ScraperContractMixin:
         """Scraping the same page twice yields the same fingerprints."""
         first = await self.fetch_from_fixture()
         second = await self.fetch_from_fixture()
-        assert isinstance(self, unittest.TestCase)
         self.assertEqual(
             [listing.fingerprint for listing in first],
             [listing.fingerprint for listing in second],

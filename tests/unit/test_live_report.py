@@ -110,8 +110,8 @@ class LiveReportTest(unittest.TestCase):
         )
         base_logger = logging.getLogger("flatpulse.scrapers.base")
         with self.assertLogs(base_logger), skipped_listings() as skipped:
-            scraper._parse_or_skip(invalid)
-            base_logger.warning("Fiche %s : connexion coupée", "https://example.test")
+            scraper._build_or_skip(invalid)
+            base_logger.warning("Fiche %s skipped: %r", "https://example.test", "reset")
 
         self.assertEqual(skipped, ["Skipped invalid listing: title cannot be empty"])
 

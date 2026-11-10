@@ -42,7 +42,7 @@ class TestBurgerScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
     fixture_name = "burger_sitemap.xml"
 
     def new_scraper(self) -> BurgerScraper:
-        """A fresh BurgerScraper, typed as such: its parse_listing also takes the URL."""
+        """A fresh BurgerScraper, typed as such: the cases below call its parse_fiche."""
         return BurgerScraper(
             rate_limiter=AsyncMock(spec=RateLimiter), canton_lookup=CANTON_LOOKUP
         )
@@ -176,7 +176,7 @@ class TestBurgerScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
             "burger/geneve-appartement-de-3-pieces-au-2eme-etage.html"
         ).text.replace("CHF 2'330.— / mois", "Loyer sur demande")
 
-        listing = self.new_scraper().parse_listing(Selector(text=html), url)
+        listing = self.new_scraper().parse_fiche(Selector(text=html), url)
 
         self.assertIsNone(listing.price_chf)
         self.assertIsNone(listing.charges_chf)
@@ -200,7 +200,7 @@ class TestBurgerScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
         page = Selector(text=re.sub(r"<h1[^>]*>.*?</h1>", "", html, flags=re.S))
 
         with self.assertRaisesRegex(ValueError, "title"):
-            self.new_scraper().parse_listing(page, url)
+            self.new_scraper().parse_fiche(page, url)
 
     @patch("httpx.AsyncClient.get", new_callable=AsyncMock)
     async def test_burger_invalid_fiche_is_skipped(self, mock_get: AsyncMock) -> None:
@@ -273,7 +273,7 @@ class TestBurgerScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
         """An approximate surface keeps its value, a range keeps its lower bound."""
         for row, surface in {"ENV. 60 M2": 60.0, "de 85 M2 à 100 M2": 85.0}.items():
             with self.subTest(row=row):
-                listing = self.new_scraper().parse_listing(
+                listing = self.new_scraper().parse_fiche(
                     apartment_with_surface_row(row), APARTMENT
                 )
                 self.assertEqual(listing.surface_m2, surface)
@@ -283,7 +283,7 @@ class TestBurgerScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
         page = apartment_with_surface_row("Balcon 12 m2 plein sud")
 
         with self.assertLogs("flatpulse.scrapers.sources.burger", "WARNING") as logs:
-            listing = self.new_scraper().parse_listing(page, APARTMENT)
+            listing = self.new_scraper().parse_fiche(page, APARTMENT)
 
         self.assertIsNone(listing.surface_m2)
         self.assertEqual(listing.nb_rooms, 3.0)

@@ -125,7 +125,7 @@ Le payload ne porte ni description ni rue ; la fiche (`link`) les porte toutes l
 
 | Champ | Sélecteur |
 |---|---|
-| URL / id | l'URL `<loc>` du sitemap (repli : `link[rel=canonical]::attr(href)`) |
+| URL / id | l'URL `<loc>` du sitemap, passée à `parse_fiche` |
 | titre | `h1::text` |
 | description | `div.prose` (texte) |
 | loyer net | `//div[text()='Loyer']/following-sibling::div/text()` |

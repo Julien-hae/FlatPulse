@@ -6,12 +6,15 @@ from collections.abc import Callable
 from dataclasses import replace
 from unittest.mock import AsyncMock, Mock, call, patch
 
+import httpx
 from parsel import Selector
 
 from flatpulse.common.models import Listing
 from flatpulse.common.utils import parse_monthly_rent
 from flatpulse.scrapers.base import (
     AbstractScraper,
+    CatalogueScraper,
+    FicheScraper,
     HttpScraper,
 )
 from flatpulse.scrapers.rate_limiter import RateLimiter
@@ -19,8 +22,8 @@ from tests.contract.test_scraper_contract import ScraperContractMixin
 from tests.helpers import CANTON_LOOKUP, response_from_fixture
 
 
-class MinimalScraper(HttpScraper):
-    """Smallest possible HttpScraper subclass, used only to exercise the base class."""
+class MinimalScraper(CatalogueScraper):
+    """Smallest possible CatalogueScraper, used only to exercise the base classes."""
 
     base_url = "https://example.com/louer"
     slug = "minimal"
@@ -48,6 +51,16 @@ class AlternatingInvalidScraper(MinimalScraper):
         return listing
 
 
+class CrashingParserScraper(MinimalScraper):
+    """Scraper test double whose parser crashes on the middle listing."""
+
+    def parse_listing(self, node: Selector) -> Listing:
+        """Listing 102 hits a bug of the parser itself, not an invalid field."""
+        if node.attrib.get("data-id") == "102":
+            raise AttributeError("'NoneType' object has no attribute 'strip'")
+        return super().parse_listing(node)
+
+
 class PostalCodeScraper(MinimalScraper):
     """Scraper test double publishing a postal code, and a canton for listing 102."""
 
@@ -56,6 +69,28 @@ class PostalCodeScraper(MinimalScraper):
         if listing.external_id == "102":
             return replace(listing, canton="VD")
         return listing
+
+
+class MinimalFicheScraper(FicheScraper):
+    """Smallest possible FicheScraper: an index of two fiches, each a listing page."""
+
+    base_url = "https://example.com/index"
+    slug = "minimal-fiches"
+    FICHES = ("https://example.com/fiche/1", "https://example.com/fiche/2")
+
+    async def fiche_urls(self, client: httpx.AsyncClient) -> list[str]:
+        await self._get(client, self.base_url)
+        return list(self.FICHES)
+
+    def parse_fiche(self, node: Selector, url: str) -> Listing:
+        return Listing(
+            external_id=url, external_url=url, title=node.css("h1::text").get("")
+        )
+
+
+def fiche_response(title: str = "Appartement à Carouge") -> Mock:
+    """A fake httpx response serving a one-title fiche page."""
+    return Mock(text=f"<html><h1>{title}</h1></html>")
 
 
 class TestMinimalScraperContract(
@@ -140,6 +175,25 @@ class TestHttpScraper(unittest.IsolatedAsyncioTestCase):
         self.assertIn("price_chf", warning)
         self.assertIn("https://example.com/annonces/102", warning)
 
+    @patch("httpx.AsyncClient.get", new_callable=AsyncMock)
+    async def test_crashing_parser_loses_one_listing_not_the_poll(
+        self, mock_get: AsyncMock
+    ) -> None:
+        """A parser bug on one listing is logged with its traceback; the others come out."""
+        mock_get.return_value = response_from_fixture("sample_listing.html")
+        scraper = CrashingParserScraper(
+            rate_limiter=AsyncMock(spec=RateLimiter), canton_lookup=CANTON_LOOKUP
+        )
+
+        with self.assertLogs("flatpulse.scrapers.base", level="ERROR") as captured:
+            result = await scraper.fetch_listings()
+
+        self.assertEqual([listing.external_id for listing in result], ["101", "103"])
+        [error] = captured.output
+        self.assertIn("Skipped invalid listing", error)
+        self.assertIn("AttributeError", error)
+        self.assertIn("Traceback", error)
+
     async def test_run_does_not_sleep(self) -> None:
         """run delegates to fetch_listings without a separate delay."""
         scraper = MinimalScraper(
@@ -180,15 +234,99 @@ class TestHttpScraper(unittest.IsolatedAsyncioTestCase):
         )
 
 
+class TestFicheScraper(unittest.IsolatedAsyncioTestCase):
+    """What FicheScraper does once, for every source read fiche by fiche."""
+
+    def setUp(self) -> None:
+        self.limiter = AsyncMock(spec=RateLimiter)
+        self.scraper = MinimalFicheScraper(
+            rate_limiter=self.limiter, canton_lookup=CANTON_LOOKUP
+        )
+
+    @patch("httpx.AsyncClient.get", new_callable=AsyncMock)
+    async def test_each_fiche_of_the_index_is_a_listing(
+        self, mock_get: AsyncMock
+    ) -> None:
+        """The index, then one paced request per fiche, each parsed with its URL."""
+        mock_get.return_value = fiche_response()
+
+        listings = await self.scraper.fetch_listings()
+
+        self.assertEqual(
+            [listing.external_url for listing in listings],
+            list(MinimalFicheScraper.FICHES),
+        )
+        self.assertEqual(
+            [request.args[0] for request in mock_get.await_args_list],
+            [MinimalFicheScraper.base_url, *MinimalFicheScraper.FICHES],
+        )
+        self.assertEqual(self.limiter.acquire.await_count, 3)
+
+    @patch("httpx.AsyncClient.get", new_callable=AsyncMock)
+    async def test_failing_fiche_is_skipped_and_logged(
+        self, mock_get: AsyncMock
+    ) -> None:
+        """One dropped connection loses one fiche, not the poll."""
+        first, second = MinimalFicheScraper.FICHES
+
+        def get(url: str) -> Mock:
+            if url == first:
+                raise httpx.RemoteProtocolError("Server disconnected")
+            return fiche_response()
+
+        mock_get.side_effect = get
+
+        with self.assertLogs("flatpulse.scrapers.base", "WARNING") as captured:
+            listings = await self.scraper.fetch_listings()
+
+        self.assertEqual([listing.external_url for listing in listings], [second])
+        [warning] = captured.output
+        self.assertIn(first, warning)
+
+    @patch("httpx.AsyncClient.get", new_callable=AsyncMock)
+    async def test_invalid_fiche_is_skipped_and_logged(
+        self, mock_get: AsyncMock
+    ) -> None:
+        """A fiche Listing refuses (no title) is skipped; the next one comes out."""
+        first, second = MinimalFicheScraper.FICHES
+        mock_get.side_effect = lambda url: fiche_response(
+            "" if url == first else "Appartement à Carouge"
+        )
+
+        with self.assertLogs("flatpulse.scrapers.base", "WARNING") as captured:
+            listings = await self.scraper.fetch_listings()
+
+        self.assertEqual([listing.external_url for listing in listings], [second])
+        [warning] = captured.output
+        self.assertIn("title", warning)
+
+    @patch("httpx.AsyncClient.get", new_callable=AsyncMock)
+    async def test_failing_index_is_raised(self, mock_get: AsyncMock) -> None:
+        """Without its index the source is down: the pipeline must hear of it."""
+        mock_get.side_effect = httpx.ConnectError("Network is unreachable")
+
+        with self.assertRaises(httpx.ConnectError):
+            await self.scraper.fetch_listings()
+
+
 class TestScraperContract(unittest.TestCase):
     """Tests for the abstract contract and Listing building."""
 
     def test_abstract_classes_cannot_be_instantiated(self) -> None:
-        """AbstractScraper and HttpScraper are abstract and must not be instantiable."""
+        """The base classes are abstract: only the scraper of a source can be built."""
         with self.assertRaises(TypeError):
             AbstractScraper()  # type: ignore[abstract]
-        with self.assertRaises(TypeError):
-            HttpScraper()  # type: ignore[abstract]
+        bases: tuple[type[HttpScraper], ...] = (
+            HttpScraper,
+            CatalogueScraper,
+            FicheScraper,
+        )
+        for base in bases:
+            with self.subTest(base=base.__name__), self.assertRaises(TypeError):
+                base(
+                    rate_limiter=AsyncMock(spec=RateLimiter),
+                    canton_lookup=CANTON_LOOKUP,
+                )
 
     def test_listing_rejects_empty_required_field(self) -> None:
         """A listing without identity breaks the dedup."""

@@ -1,8 +1,5 @@
 """Scraper for Comptoir Immobilier: the catalogue lists the fiches, each fiche is a listing."""
 
-import logging
-from functools import partial
-
 import httpx
 from parsel import Selector, SelectorList
 
@@ -16,35 +13,14 @@ from flatpulse.common.utils import (
     parse_rooms,
     parse_surface,
 )
-from flatpulse.scrapers.base import HttpScraper
-
-logger = logging.getLogger(__name__)
+from flatpulse.scrapers.base import FicheScraper
 
 
-class ComptoirScraper(HttpScraper):
+class ComptoirScraper(FicheScraper):
     """Scrape every rental fiche of the Comptoir Immobilier catalogue."""
 
     base_url = "https://comptoir-immo.ch/location/"
     slug = "comptoir"
-
-    async def fetch_listings(self) -> list[Listing]:
-        """Walk the catalogue, then parse each fiche; skip failing or invalid ones."""
-        listings: list[Listing] = []
-        async with httpx.AsyncClient() as client:
-            for url in await self._fiche_urls(client):
-                try:
-                    fiche = await self._get_page(client, url)
-                except httpx.HTTPError as error:
-                    logger.warning("Fiche %s ignorée : %r", url, error)
-                    continue
-                listing = self._parse_or_skip(partial(self.parse_listing, fiche))
-                if listing is not None:
-                    listings.append(listing)
-        return listings
-
-    def listing_nodes(self, page: Selector) -> list[Selector]:
-        """Return one node per property card on a catalogue page."""
-        return list(page.css("article.teaser--property_for_rent"))
 
     @staticmethod
     def nb_pages(page: Selector) -> int:
@@ -56,8 +32,12 @@ class ComptoirScraper(HttpScraper):
         ]
         return max(numbers, default=1)
 
-    def parse_listing(self, node: Selector) -> Listing:
-        """Extract the listing from a fiche, mostly from its « Détails » table."""
+    def parse_fiche(self, node: Selector, url: str) -> Listing:
+        """Extract the listing from a fiche, mostly from its « Détails » table.
+
+        The fiche's canonical link is its published URL, kept rather than `url`,
+        the card's link it was downloaded from; a fiche without one is invalid.
+        """
         url = node.css("link[rel=canonical]::attr(href)").get("")
         city, _, canton = (self._text(node.css("h1 + h2")) or "").partition(", ")
         surface_m2 = parse_surface(self._detail(node, "Surface"))
@@ -106,7 +86,7 @@ class ComptoirScraper(HttpScraper):
         """Whitespace-normalised text of the first node, None when absent or empty."""
         return nodes.xpath("normalize-space()").get() or None
 
-    async def _fiche_urls(self, client: httpx.AsyncClient) -> list[str]:
+    async def fiche_urls(self, client: httpx.AsyncClient) -> list[str]:
         """URLs of the fiches carded on every page of the catalogue."""
         first = await self._get_page(client, f"{self.base_url}?page=1")
         pages = [first] + [
@@ -116,8 +96,8 @@ class ComptoirScraper(HttpScraper):
         return [
             url
             for page in pages
-            for node in self.listing_nodes(page)
-            if (url := node.css("a:has(h2)::attr(href)").get())
+            for card in page.css("article.teaser--property_for_rent")
+            if (url := card.css("a:has(h2)::attr(href)").get())
         ]
 
     async def _get_page(self, client: httpx.AsyncClient, url: str) -> Selector:

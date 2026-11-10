@@ -7,9 +7,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from parsel import Selector
 
 from flatpulse.common.models import PropertyType
+from flatpulse.scrapers.rate_limiter import RateLimiter
 from flatpulse.scrapers.sources.naef import NaefScraper
 from tests.contract.test_scraper_contract import ScraperContractMixin
-from tests.helpers import response_from_fixture
+from tests.helpers import CANTON_LOOKUP, response_from_fixture
 
 
 class TestNaefScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
@@ -21,6 +22,12 @@ class TestNaefScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
 
     scraper_class = NaefScraper
     fixture_name = "naef_cases.json"
+
+    def new_scraper(self) -> NaefScraper:
+        """A fresh NaefScraper, typed as such: some cases call its parse_listing."""
+        return NaefScraper(
+            rate_limiter=AsyncMock(spec=RateLimiter), canton_lookup=CANTON_LOOKUP
+        )
 
     async def test_naef_full_apartment(self) -> None:
         """A complete Geneva apartment comes out field by field."""
