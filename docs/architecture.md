@@ -659,11 +659,30 @@ d'implémenter les stories concernées.
     libellé. `ComptoirScraper` parcourt donc le catalogue pour les URL, puis télécharge
     chaque fiche en respectant le Crawl-delay de 10 s avant chaque requête : un poll
     **complet** dure ≈ 1 h (16 pages + 375 fiches au 04.11.2026). *Depuis #120*, seul
-    le premier poll après un démarrage est complet : un poll établi relit les pages du
-    catalogue (17 au 14.11.2026, soit ≈ 2 min 40) et les seules fiches dont la carte
-    est nouvelle ou modifiée, 10 s de plus par fiche. C'est à la limite de l'objectif
-    d'alerte < 3 min : ne lire que la première page du catalogue (#150) est le levier
-    suivant.
+    le premier poll après un démarrage est complet : les fiches déjà lues ne sont plus
+    retéléchargées. *Depuis #150*, un poll établi ne relit plus tout le catalogue non
+    plus. Trois durées, donc :
+    - **Poll court** (le cas courant) : la page 1 du catalogue, triée de la plus
+      récente à la plus ancienne (vérifié le 14.11.2026, `docs/spike-agencies.md`). Si
+      toutes ses cartes sont connues, le poll s'arrête : **une requête**. Sinon il lit
+      la page suivante, jusqu'à la première page sans carte inconnue, puis les fiches
+      nouvelles : une nouveauté coûte **3 requêtes, ≈ 20 s** (page 1, page 2, fiche ;
+      30 s mesurés en direct, attente du premier jeton comprise). L'alerte part donc
+      en « intervalle de poll + ≈ 20 s » : sous les 3 min tant que l'intervalle
+      (`AdaptivePoller`, 30 à 600 s) reste sous ≈ 2 min 30.
+    - **Parcours complet**, au premier poll puis une fois par heure
+      (`FULL_WALK_EVERY_S`) : toutes les pages (17 au 14.11.2026, ≈ 2 min 40) et les
+      fiches dont la carte a changé. Lui seul voit une annonce disparue ou une carte
+      modifiée au-delà de la page 1, donc avec jusqu'à 1 h de retard. Une annonce
+      publiée pendant ce parcours attend le poll suivant : ≈ 4 min au pire, une fois
+      par heure.
+    - **Démarrage** : ≈ 1 h, le cache étant en mémoire. Les annonces publiées pendant
+      cette heure sont vues au parcours complet qui suit ; préremplir le cache depuis
+      la table `listings` reste hors périmètre (#120).
+
+    Une carte dont la fiche n'a jamais pu être lue (invalide, ou en échec) reste
+    « inconnue » : tant qu'elle est en page 1, chaque poll court lit aussi la page 2 et
+    retente la fiche.
 11. **`dict` → `Listing` dans les stories aval.** #46, #51, #54 et #59 décrivent un
     `listing: dict` (dedup, enrichissement, matching, notification). Depuis #114, les
     scrapers produisent des `Listing` : lire ces stories avec `listing: Listing`, accès

@@ -1,9 +1,19 @@
-"""Scraper for Comptoir Immobilier: the catalogue lists the fiches, each fiche is a listing."""
+"""Scraper for Comptoir Immobilier: the catalogue lists the fiches, each fiche is a listing.
+
+The catalogue is sorted newest first (checked against the RSS `pubDate`s on
+14.11.2026, `docs/spike-agencies.md`): a poll reads its first page, and goes on
+only while a page shows a card it does not know. The whole catalogue is walked
+at the first poll, then once an hour.
+"""
+
+import time
+from collections.abc import Callable
 
 import httpx
 from parsel import Selector, SelectorList
 
 from flatpulse.common.models import Listing
+from flatpulse.common.postal_codes import CantonLookup
 from flatpulse.common.utils import (
     canton_code,
     parse_charges,
@@ -14,6 +24,11 @@ from flatpulse.common.utils import (
     parse_surface,
 )
 from flatpulse.scrapers.base import FicheScraper
+from flatpulse.scrapers.rate_limiter import RateLimiter
+
+# Only a walk of every page sees a card that left the catalogue, or one that
+# changed beyond the pages a short poll reads.
+FULL_WALK_EVERY_S = 3600.0
 
 
 class ComptoirScraper(FicheScraper):
@@ -21,6 +36,17 @@ class ComptoirScraper(FicheScraper):
 
     base_url = "https://comptoir-immo.ch/location/"
     slug = "comptoir"
+
+    def __init__(
+        self,
+        rate_limiter: RateLimiter,
+        canton_lookup: CantonLookup,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
+        """Read the time, in seconds, from `clock`: it dates the full walks."""
+        super().__init__(rate_limiter, canton_lookup)
+        self._clock = clock
+        self._last_full_walk: float | None = None
 
     @staticmethod
     def nb_pages(page: Selector) -> int:
@@ -87,19 +113,45 @@ class ComptoirScraper(FicheScraper):
         return nodes.xpath("normalize-space()").get() or None
 
     async def fiche_versions(self, client: httpx.AsyncClient) -> dict[str, str | None]:
-        """The fiches carded on every page of the catalogue, versioned by their card.
+        """The fiches of the catalogue, versioned by their card.
+
+        A short poll reads the first page, then the next one as long as the page
+        just read shows a card whose fiche is not remembered: with nothing
+        published, one request. The fiches of the pages it did not read keep
+        the version they are remembered with.
+
+        The first poll, then one poll an hour, walks every page: the fiches it
+        returns are the catalogue's, so a card that left it is forgotten.
+        """
+        now = self._clock()
+        full_walk = (
+            self._last_full_walk is None
+            or now - self._last_full_walk >= FULL_WALK_EVERY_S
+        )
+        page = await self._get_page(client, f"{self.base_url}?page=1")
+        last = self.nb_pages(page)
+        cards = self._cards(page)
+        walked = dict(cards)
+        number = 1
+        while number < last and (full_walk or cards.keys() - self._fiches.keys()):
+            number += 1
+            page = await self._get_page(client, f"{self.base_url}?page={number}")
+            cards = self._cards(page)
+            walked |= cards
+        if not full_walk:
+            return {url: fiche.version for url, fiche in self._fiches.items()} | walked
+        self._last_full_walk = now
+        return walked
+
+    @staticmethod
+    def _cards(page: Selector) -> dict[str, str | None]:
+        """The fiches carded on a catalogue page: their URL, and the card's text.
 
         A card shows the rent, the title, the type, the rooms, the surface and the
         town: its text moves when one of them does.
         """
-        first = await self._get_page(client, f"{self.base_url}?page=1")
-        pages = [first] + [
-            await self._get_page(client, f"{self.base_url}?page={number}")
-            for number in range(2, self.nb_pages(first) + 1)
-        ]
         return {
             url: card.xpath("normalize-space()").get()
-            for page in pages
             for card in page.css("article.teaser--property_for_rent")
             if (url := card.css("a:has(h2)::attr(href)").get())
         }

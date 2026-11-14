@@ -5,6 +5,7 @@
 > Naef : volumes et mapping actualisés au 30.10.2026 (#116).
 > Naef, Burger, Comptoir : localisation, titres et types revus après l'audit en direct
 > du 08.11.2026 (#131, résultats dans `docs/live-audit.md`).
+> Comptoir : tri du catalogue vérifié en direct le 14.11.2026 (#150).
 > Aucune régie ne nécessite Playwright.
 
 Les volumes sont des **fiches distinctes**, pagination suivie et dédupliquée — pas des
@@ -163,14 +164,38 @@ Le payload ne porte ni description ni rue ; la fiche (`link`) les porte toutes l
 
 - Accès : `GET comptoir-immo.ch/location/?page=N` (toute l'offre, tous types et cantons), puis `GET` de chaque fiche détail
 - Rendu : HTML statique
-- Pagination : ?page=N, 24 par page — tri antichronologique par défaut
+- Pagination : ?page=N, 24 par page — tri antichronologique par défaut, **vérifié le 14.11.2026** (voir « Tri du catalogue »)
 - Scraper : **FicheScraper** — la carte donne l'URL de la fiche et sa version, tout le reste vient de la fiche
+- Poll (#150) : la page 1 seule quand toutes ses cartes sont connues (une requête) ; sinon les pages suivantes jusqu'à la première sans carte inconnue. Parcours complet au premier poll, puis une fois par heure
 - Débit : Crawl-delay: 10 → rate_limit_rpm = 6, attendu avant **chaque** requête (catalogue et fiches) : le premier poll après un démarrage dure ≈ 1 h (16 pages + 375 fiches au 04.11.2026) ; un poll établi ne relit que les pages du catalogue (≈ 2 min 40) et les fiches nouvelles ou modifiées (cache en mémoire, #120)
 - Signal de changement : le texte normalisé de la carte (`normalize-space()` de l'`article` : loyer, titre, type, pièces, surface, commune). Carte inconnue ou texte modifié → la fiche est relue ; carte disparue → l'annonce n'est plus rendue. Une retouche visible seulement sur la fiche (description, charges à loyer égal) n'est pas vue tant que la carte ne bouge pas
 - Canal de repli : GET /?post_type=property_for_rent&feed=rss2 — 24 items, pubDate réelles. Le sitemap property_for_rent-*.xml est périmé (lastmod 2025-11)
 - Volume : 375 biens en location au 04.11.2026 (Genève, Vaud, Valais)
 - Flux : +0 depuis 22.09.2026 07:25
 - Fixture : `tests/fixtures/comptoir_cases.html` — 10 cartes du catalogue, une par piège ; `tests/fixtures/comptoir/<slug>.html` — leurs 10 fiches des 04.11 et 08.11.2026, plus `279533.html`, fiche seule sans carte, lue directement par `parse_listing` (contact anonymisé ; scripts, styles, SVG et srcset retirés)
+
+### Tri du catalogue (spike #150, relevé du 14.11.2026 06:25 UTC)
+
+- Les 24 cartes de `?page=1` sont les 24 items du flux RSS
+  (`/feed/?post_type=property_for_rent`, vers lequel `/?post_type=…&feed=rss2`
+  redirige en 301), **mêmes URL, même ordre**. Les `pubDate` du flux décroissent
+  strictement, du 13.11 18:08 au 10.11 18:05 UTC : la page 1 est triée par date de
+  publication, la plus récente en tête. Une annonce nouvelle y apparaît donc en premier.
+- Le texte des cartes est stable : deux lectures de la page 1 à 4 min d'écart donnent
+  24 versions identiques, dans le même ordre. Le cache (#120) ne relit donc rien à tort.
+- Les publications arrivent **par vagues** : les 24 `pubDate` tombent toutes entre
+  12:16 et 12:21 ou entre 18:01 et 18:09 UTC (≈ 13 h 15 et 19 h 05, heure suisse), sur
+  quatre jours, jusqu'à 7 annonces par vague. Échantillon court : à confirmer avant
+  d'en tirer une règle de polling.
+- 17 pages le 14.11.2026 (16 le 04.11).
+- Mesure en direct d'un poll établi, à 6 rpm : une carte inconnue en tête de page 1 →
+  3 requêtes (page 1, page 2, fiche) ; rien de nouveau → 1 requête.
+- Non observé : une publication au moment où elle se produit, et le rang d'une annonce
+  **modifiée** (remonte-t-elle en tête ?). Sans conséquence pour le scraper : une carte
+  modifiée est vue par sa version en page 1, ou au parcours complet horaire.
+- Pendant ce relevé, une page du catalogue (`?page=11`) n'a pas répondu en 5 s
+  (`ReadTimeout`), les dix précédentes si. L'index en échec fait échouer le poll ; le
+  nouvel essai sur erreur passagère est l'objet de #154.
 
 ### Sélecteurs de la fiche
 

@@ -32,6 +32,7 @@ def fake_get(url: str) -> MagicMock:
 
 
 CATALOGUE_PAGE = f"{ComptoirScraper.base_url}?page=1"
+SECOND_PAGE = f"{ComptoirScraper.base_url}?page=2"
 # The ten cards of the frozen catalogue, by the URL of their fiche.
 CARDS = {
     card.css("a:has(h2)::attr(href)").get(""): card.get()
@@ -49,19 +50,30 @@ def card_url(slug: str) -> str:
 class FakeComptoir:
     """comptoir-immo.ch as a test changes it between two polls of one scraper.
 
-    `cards` is the catalogue, `fiches` the pages that differ from the frozen ones;
-    a fiche held as an exception fails to download.
+    `cards` is the catalogue, newest first, served `per_page` cards at a time;
+    `fiches` holds the pages that differ from the frozen ones; a fiche held as an
+    exception fails to download.
     """
 
-    def __init__(self) -> None:
-        """Start as the frozen catalogue and its frozen fiches."""
+    def __init__(self, per_page: int = len(CARDS)) -> None:
+        """Start as the frozen catalogue, on a single page unless told otherwise."""
         self.cards = dict(CARDS)
+        self.per_page = per_page
         self.fiches: dict[str, str | Exception] = {}
+
+    def page(self, number: int) -> str:
+        """Catalogue page `number`: its cards, then the link to the last page."""
+        cards = list(self.cards.values())
+        last = max(1, -(-len(cards) // self.per_page))
+        start = (number - 1) * self.per_page
+        return "".join(cards[start : start + self.per_page]) + (
+            f'<a class="page-number page-numbers">{last}</a>'
+        )
 
     def get(self, url: str) -> MagicMock:
         """Serve the catalogue as it stands, else the fiche at `url`."""
         if url.startswith(ComptoirScraper.base_url + "?page="):
-            return MagicMock(text="".join(self.cards.values()))
+            return MagicMock(text=self.page(int(url.rpartition("=")[2])))
         fiche = self.fiches.get(url)
         if isinstance(fiche, Exception):
             raise fiche
@@ -371,8 +383,11 @@ class TestComptoirFicheCache(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
         """One scraper for the polls of a test: the cache lives in it."""
         self.site = FakeComptoir()
+        self.now = 0.0
         self.scraper = ComptoirScraper(
-            rate_limiter=AsyncMock(spec=RateLimiter), canton_lookup=CANTON_LOOKUP
+            rate_limiter=AsyncMock(spec=RateLimiter),
+            canton_lookup=CANTON_LOOKUP,
+            clock=lambda: self.now,
         )
 
     async def test_comptoir_unchanged_card_reuses_fiche(self) -> None:
@@ -419,10 +434,14 @@ class TestComptoirFicheCache(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(second), len(first) + 1)
 
     async def test_comptoir_gone_card_drops_listing(self) -> None:
-        """A card that left the catalogue is not kept alive by the cache."""
+        """A card that left the catalogue is not kept alive by the cache.
+
+        Seen by a full walk of the catalogue (#150), hence the hour that passes.
+        """
         url = card_url(GENEVA)
         first, _ = await self.site.poll(self.scraper)
         del self.site.cards[url]
+        self.now += 3600
 
         second, requested = await self.site.poll(self.scraper)
         self.site.cards[url] = CARDS[url]
@@ -432,3 +451,59 @@ class TestComptoirFicheCache(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(second, [item for item in first if item.external_id != GENEVA])
         # Forgotten, not merely hidden: back in the catalogue, its fiche is read anew.
         self.assertEqual(requested_when_back, [CATALOGUE_PAGE, url])
+
+
+class TestComptoirShortPoll(unittest.IsolatedAsyncioTestCase):
+    """An established poll stops at the first catalogue page without a new card (#150)."""
+
+    def setUp(self) -> None:
+        """A catalogue of two pages of five cards, and a clock the test moves."""
+        self.site = FakeComptoir(per_page=5)
+        self.now = 0.0
+        self.scraper = ComptoirScraper(
+            rate_limiter=AsyncMock(spec=RateLimiter),
+            canton_lookup=CANTON_LOOKUP,
+            clock=lambda: self.now,
+        )
+
+    async def test_comptoir_known_first_page_stops_the_poll(self) -> None:
+        """Nothing published: one request, and still every listing."""
+        first, requested_first = await self.site.poll(self.scraper)
+        self.now += 60
+
+        second, requested = await self.site.poll(self.scraper)
+
+        self.assertEqual(requested_first[:2], [CATALOGUE_PAGE, SECOND_PAGE])
+        self.assertEqual(requested, [CATALOGUE_PAGE])
+        self.assertEqual(second, first)
+        self.assertEqual(len(second), len(CARDS))
+
+    async def test_comptoir_new_card_on_first_page_is_fetched(self) -> None:
+        """A new card heads page 1: the next page is read too, then its fiche."""
+        url = card_url(GENEVA)
+        del self.site.cards[url]
+        first, _ = await self.site.poll(self.scraper)
+        self.site.cards = {url: CARDS[url], **self.site.cards}
+        self.now += 60
+
+        second, requested = await self.site.poll(self.scraper)
+
+        # Page 2 holds no unknown card: the walk stops there, then the fiche is read.
+        self.assertEqual(requested, [CATALOGUE_PAGE, SECOND_PAGE, url])
+        self.assertIn(GENEVA, [item.external_id for item in second])
+        self.assertEqual(len(second), len(first) + 1)
+
+    async def test_comptoir_full_walk_after_one_hour(self) -> None:
+        """After an hour every page is read again, and a card gone from page 2 is seen."""
+        gone = list(CARDS)[-1]
+        first, _ = await self.site.poll(self.scraper)
+        del self.site.cards[gone]
+        self.now += 61 * 60
+
+        second, requested = await self.site.poll(self.scraper)
+
+        self.assertEqual(requested, [CATALOGUE_PAGE, SECOND_PAGE])
+        self.assertEqual(len(second), len(first) - 1)
+        self.assertNotIn(
+            gone, [item.external_url for item in second], "listing still alive"
+        )
