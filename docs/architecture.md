@@ -179,9 +179,22 @@ pas directement mais de l'une de ses deux formes, selon la façon dont elle publ
   régie implémente `listing_nodes(page)` et `parse_listing(node)`.
 - **`FicheScraper`** — un index nomme les fiches, chaque fiche est une annonce
   (sitemap de Burger, catalogue paginé de Comptoir). La régie implémente
-  `fiche_urls(client)` et `parse_fiche(node, url)` ; la boucle, écrite une fois, saute
-  une fiche en échec de téléchargement (WARNING) sans perdre les autres. L'index en
-  échec, lui, remonte : la source est à terre.
+  `fiche_versions(client)` et `parse_fiche(node, url)` ; la boucle, écrite une fois,
+  saute une fiche en échec de téléchargement (WARNING) sans perdre les autres. L'index
+  en échec, lui, remonte : la source est à terre.
+
+**Cache des fiches** (#120). Un poll ne télécharge que les fiches **nouvelles ou
+modifiées**. `fiche_versions()` rend, pour chaque URL de l'index, sa `version` : ce que
+la source dit de la fiche sans elle (le texte de la carte Comptoir, le `lastmod` du
+sitemap Burger). `HttpScraper._cached_fiche(client, url, version, parse)` garde en
+mémoire `url → (version, Listing)` (un dict par scraper, comme le `RateLimiter`) :
+version inchangée → l'annonce mémorisée, sans requête ; URL inconnue, version modifiée
+ou version `None` → un `GET` par `_get()`, donc bridé. `fetch_listings()` rend toujours
+**toutes** les annonces de l'index, lues ou mémorisées : la dedup et le pipeline ne
+voient aucune différence. Une fiche sortie de l'index sort du cache. Une fiche en échec
+de téléchargement reste telle qu'elle était au dernier poll réussi (WARNING) et est
+retentée au suivant. Le cache vit dans l'instance : le pipeline (#64) garde le même
+scraper d'un poll à l'autre, et un redémarrage relit tout.
 
 Aucune régie ne surcharge `fetch_listings`. C'est la seule famille
 d'implémentations nécessaire : le spike a confirmé qu'aucune des 13 régies analysées ne
@@ -629,12 +642,15 @@ d'implémenter les stories concernées.
    10 s ; aucun burst n'est possible. Le rate limiting est géré par requête, pas par
    `run()`, qui ne fait aucune pause globale. Cela s'applique au sitemap et à chaque fiche
    Burger, à chaque page et fiche Comptoir, et à l'unique GET Naef : tout passe par
-   `HttpScraper._get()`. Conséquence : à 4 rpm, un poll Burger complet dure ≈ 11 min
-   (sitemap + 42 fiches au 30.10.2026), au-delà de l'objectif d'alerte < 3 min ; ne
-   télécharger que les fiches nouvelles est la piste (#120), hors #121. Le `lastmod` du
-   sitemap ne date pas une modification : il vaut la date du jour sur presque toutes
-   les fiches (relevé du 10.11.2026, `docs/spike-agencies.md`). Il sert de version
-   quotidienne : une relecture complète par jour, les nouveautés reconnues à leur URL.
+   `HttpScraper._get()`. Conséquence : à 4 rpm, un poll Burger **complet** dure
+   ≈ 11 min (sitemap + 42 fiches au 30.10.2026), au-delà de l'objectif d'alerte
+   < 3 min. *Depuis #120*, seul le premier poll après un démarrage est complet : un
+   poll établi lit le sitemap (une requête) et les seules fiches nouvelles ou dont le
+   `lastmod` a bougé, soit 15 s de plus par fiche. Le `lastmod` du sitemap ne date pas
+   une modification : il vaut la date du jour sur presque toutes les fiches (relevé du
+   10.11.2026, `docs/spike-agencies.md`). Il sert de version quotidienne : une
+   relecture complète par jour (≈ 11 min, pendant lesquelles une nouveauté attend),
+   les nouveautés reconnues à leur URL le reste du temps.
 10. **Comptoir : adresse et description absentes de la page liste.** *Tranché le
     04.11.2026 : le scraper lit la fiche de chaque annonce.* Les cartes de
     `comptoir-immo.ch/location/` ne donnent que « Commune, Canton », aucune description,
@@ -642,10 +658,12 @@ d'implémenter les stories concernées.
     tableau « Détails » (type, adresse, loyer, charges, étage, pièces, surface) lu par
     libellé. `ComptoirScraper` parcourt donc le catalogue pour les URL, puis télécharge
     chaque fiche en respectant le Crawl-delay de 10 s avant chaque requête : un poll
-    complet dure ≈ 1 h (16 pages + 375 fiches au 04.11.2026), au-delà de l'objectif
-    d'alerte < 3 min pour cette source. #121 garantit le débit conforme mais ne raccourcit
-    pas ce poll ; ne télécharger que les fiches nouvelles (#120) est le levier pour en
-    réduire la durée.
+    **complet** dure ≈ 1 h (16 pages + 375 fiches au 04.11.2026). *Depuis #120*, seul
+    le premier poll après un démarrage est complet : un poll établi relit les pages du
+    catalogue (17 au 14.11.2026, soit ≈ 2 min 40) et les seules fiches dont la carte
+    est nouvelle ou modifiée, 10 s de plus par fiche. C'est à la limite de l'objectif
+    d'alerte < 3 min : ne lire que la première page du catalogue (#150) est le levier
+    suivant.
 11. **`dict` → `Listing` dans les stories aval.** #46, #51, #54 et #59 décrivent un
     `listing: dict` (dedup, enrichissement, matching, notification). Depuis #114, les
     scrapers produisent des `Listing` : lire ces stories avec `listing: Listing`, accès

@@ -86,19 +86,23 @@ class ComptoirScraper(FicheScraper):
         """Whitespace-normalised text of the first node, None when absent or empty."""
         return nodes.xpath("normalize-space()").get() or None
 
-    async def fiche_urls(self, client: httpx.AsyncClient) -> list[str]:
-        """URLs of the fiches carded on every page of the catalogue."""
+    async def fiche_versions(self, client: httpx.AsyncClient) -> dict[str, str | None]:
+        """The fiches carded on every page of the catalogue, versioned by their card.
+
+        A card shows the rent, the title, the type, the rooms, the surface and the
+        town: its text moves when one of them does.
+        """
         first = await self._get_page(client, f"{self.base_url}?page=1")
         pages = [first] + [
             await self._get_page(client, f"{self.base_url}?page={number}")
             for number in range(2, self.nb_pages(first) + 1)
         ]
-        return [
-            url
+        return {
+            url: card.xpath("normalize-space()").get()
             for page in pages
             for card in page.css("article.teaser--property_for_rent")
             if (url := card.css("a:has(h2)::attr(href)").get())
-        ]
+        }
 
     async def _get_page(self, client: httpx.AsyncClient, url: str) -> Selector:
         """GET `url` through the limiter (Crawl-delay of 10 s), and parse it."""

@@ -31,6 +31,50 @@ def fake_get(url: str) -> MagicMock:
     return response_from_fixture(f"comptoir/{slug}.html")
 
 
+CATALOGUE_PAGE = f"{ComptoirScraper.base_url}?page=1"
+# The ten cards of the frozen catalogue, by the URL of their fiche.
+CARDS = {
+    card.css("a:has(h2)::attr(href)").get(""): card.get()
+    for card in Selector(text=response_from_fixture("comptoir_cases.html").text).css(
+        "article.teaser--property_for_rent"
+    )
+}
+
+
+def card_url(slug: str) -> str:
+    """URL of the frozen card whose fiche is `slug`."""
+    return next(url for url in CARDS if url.endswith(f"/{slug}/"))
+
+
+class FakeComptoir:
+    """comptoir-immo.ch as a test changes it between two polls of one scraper.
+
+    `cards` is the catalogue, `fiches` the pages that differ from the frozen ones;
+    a fiche held as an exception fails to download.
+    """
+
+    def __init__(self) -> None:
+        """Start as the frozen catalogue and its frozen fiches."""
+        self.cards = dict(CARDS)
+        self.fiches: dict[str, str | Exception] = {}
+
+    def get(self, url: str) -> MagicMock:
+        """Serve the catalogue as it stands, else the fiche at `url`."""
+        if url.startswith(ComptoirScraper.base_url + "?page="):
+            return MagicMock(text="".join(self.cards.values()))
+        fiche = self.fiches.get(url)
+        if isinstance(fiche, Exception):
+            raise fiche
+        return fake_get(url) if fiche is None else MagicMock(text=fiche)
+
+    async def poll(self, scraper: ComptoirScraper) -> tuple[list[Listing], list[str]]:
+        """One poll of `scraper` on this site: its listings, and the URLs it requested."""
+        with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get:
+            mock_get.side_effect = self.get
+            listings = await scraper.fetch_listings()
+        return listings, [request.args[0] for request in mock_get.await_args_list]
+
+
 class TestComptoirScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
     """Contract tests and named cases of ComptoirScraper.
 
@@ -319,3 +363,72 @@ class TestComptoirScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase
                 call.get(f"{ComptoirScraper.base_url}?page=3"),
             ],
         )
+
+
+class TestComptoirFicheCache(unittest.IsolatedAsyncioTestCase):
+    """An established poll downloads only the fiches whose card is new or changed (#120)."""
+
+    def setUp(self) -> None:
+        """One scraper for the polls of a test: the cache lives in it."""
+        self.site = FakeComptoir()
+        self.scraper = ComptoirScraper(
+            rate_limiter=AsyncMock(spec=RateLimiter), canton_lookup=CANTON_LOOKUP
+        )
+
+    async def test_comptoir_unchanged_card_reuses_fiche(self) -> None:
+        """A second poll on the same catalogue reads its pages, and not one fiche."""
+        first, _ = await self.site.poll(self.scraper)
+
+        second, requested = await self.site.poll(self.scraper)
+
+        self.assertEqual(requested, [CATALOGUE_PAGE])
+        self.assertEqual(second, first)
+        self.assertEqual(len(first), len(CARDS))
+
+    async def test_comptoir_changed_card_refetches_its_fiche(self) -> None:
+        """A rent lowered on a card is read again from its fiche, and from it alone."""
+        url = card_url(YVORNE)
+        first, _ = await self.site.poll(self.scraper)
+        self.site.cards[url] = CARDS[url].replace("3'070", "2'950")
+        self.site.fiches[url] = fake_get(url).text.replace("3'070", "2'950")
+
+        second, requested = await self.site.poll(self.scraper)
+
+        self.assertEqual(requested, [CATALOGUE_PAGE, url])
+        self.assertEqual(
+            [item.price_chf for item in second if item.external_id == YVORNE],
+            [295000],
+        )
+        self.assertEqual(
+            [item for item in second if item.external_id != YVORNE],
+            [item for item in first if item.external_id != YVORNE],
+        )
+
+    async def test_comptoir_new_card_fetches_only_its_fiche(self) -> None:
+        """A card that appears is the only fiche downloaded, and its listing comes out."""
+        url = card_url(GENEVA)
+        del self.site.cards[url]
+        first, _ = await self.site.poll(self.scraper)
+        self.site.cards[url] = CARDS[url]
+
+        second, requested = await self.site.poll(self.scraper)
+
+        self.assertEqual(requested, [CATALOGUE_PAGE, url])
+        self.assertNotIn(GENEVA, [item.external_id for item in first])
+        self.assertIn(GENEVA, [item.external_id for item in second])
+        self.assertEqual(len(second), len(first) + 1)
+
+    async def test_comptoir_gone_card_drops_listing(self) -> None:
+        """A card that left the catalogue is not kept alive by the cache."""
+        url = card_url(GENEVA)
+        first, _ = await self.site.poll(self.scraper)
+        del self.site.cards[url]
+
+        second, requested = await self.site.poll(self.scraper)
+        self.site.cards[url] = CARDS[url]
+        _, requested_when_back = await self.site.poll(self.scraper)
+
+        self.assertEqual(requested, [CATALOGUE_PAGE])
+        self.assertEqual(second, [item for item in first if item.external_id != GENEVA])
+        # Forgotten, not merely hidden: back in the catalogue, its fiche is read anew.
+        self.assertEqual(requested_when_back, [CATALOGUE_PAGE, url])

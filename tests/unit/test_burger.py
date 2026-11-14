@@ -24,6 +24,25 @@ def fake_get(url: str) -> MagicMock:
     return response_from_fixture(f"burger/{url.removeprefix(LOUER)}.html")
 
 
+SITEMAP = response_from_fixture("burger_sitemap.xml").text
+# The sitemap entry of the 3-room apartment, as frozen.
+APARTMENT_ENTRY = (
+    f"<url>\n<loc>{APARTMENT}</loc>\n<lastmod>2026-10-30</lastmod>\n</url>\n"
+)
+
+
+async def poll(scraper: BurgerScraper, sitemap: str) -> tuple[list[Listing], list[str]]:
+    """One poll of `scraper` on `sitemap`: its listings, and the URLs it requested."""
+
+    def get(url: str) -> MagicMock:
+        return MagicMock(text=sitemap) if url == scraper.base_url else fake_get(url)
+
+    with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get:
+        mock_get.side_effect = get
+        listings = await scraper.fetch_listings()
+    return listings, [request.args[0] for request in mock_get.await_args_list]
+
+
 def apartment_with_surface_row(row: str) -> Selector:
     """The 3-room apartment fiche whose « 59 m2 » feature row reads `row` instead."""
     html = fake_get(APARTMENT).text
@@ -345,3 +364,31 @@ class TestBurgerScraper(ScraperContractMixin, unittest.IsolatedAsyncioTestCase):
             expected_calls.extend([call.acquire("burger"), call.get(url)])
 
         self.assertEqual(manager.mock_calls, expected_calls)
+
+    async def test_burger_same_lastmod_reuses_fiche(self) -> None:
+        """Only the fiche whose `lastmod` moved is downloaded again."""
+        self.assertIn(APARTMENT_ENTRY, SITEMAP)
+        scraper = self.new_scraper()
+        first, _ = await poll(scraper, SITEMAP)
+
+        second, requested = await poll(
+            scraper,
+            SITEMAP.replace(
+                APARTMENT_ENTRY, APARTMENT_ENTRY.replace("2026-10-30", "2026-11-09")
+            ),
+        )
+
+        self.assertEqual(requested, [BurgerScraper.base_url, APARTMENT])
+        self.assertEqual(second, first)
+
+    async def test_burger_new_url_fetches_only_its_fiche(self) -> None:
+        """A URL the cache does not know is new, whatever the `lastmod` of the others."""
+        self.assertIn(APARTMENT_ENTRY, SITEMAP)
+        scraper = self.new_scraper()
+        first, _ = await poll(scraper, SITEMAP.replace(APARTMENT_ENTRY, ""))
+
+        second, requested = await poll(scraper, SITEMAP)
+
+        self.assertEqual(requested, [BurgerScraper.base_url, APARTMENT])
+        self.assertNotIn(APARTMENT, [item.external_id for item in first])
+        self.assertIn(APARTMENT, [item.external_id for item in second])

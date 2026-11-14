@@ -10,6 +10,7 @@ import httpx
 from parsel import Selector
 
 from flatpulse.common.models import Listing
+from flatpulse.common.postal_codes import CantonLookup
 from flatpulse.common.utils import parse_monthly_rent
 from flatpulse.scrapers.base import (
     AbstractScraper,
@@ -78,9 +79,14 @@ class MinimalFicheScraper(FicheScraper):
     slug = "minimal-fiches"
     FICHES = ("https://example.com/fiche/1", "https://example.com/fiche/2")
 
-    async def fiche_urls(self, client: httpx.AsyncClient) -> list[str]:
+    def __init__(self, rate_limiter: RateLimiter, canton_lookup: CantonLookup) -> None:
+        """Start with both fiches at version « v1 »; a test changes `index` at will."""
+        super().__init__(rate_limiter, canton_lookup)
+        self.index: dict[str, str | None] = dict.fromkeys(self.FICHES, "v1")
+
+    async def fiche_versions(self, client: httpx.AsyncClient) -> dict[str, str | None]:
         await self._get(client, self.base_url)
-        return list(self.FICHES)
+        return dict(self.index)
 
     def parse_fiche(self, node: Selector, url: str) -> Listing:
         return Listing(
@@ -299,6 +305,63 @@ class TestFicheScraper(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([listing.external_url for listing in listings], [second])
         [warning] = captured.output
         self.assertIn("title", warning)
+
+    @patch("httpx.AsyncClient.get", new_callable=AsyncMock)
+    async def test_failing_fiche_keeps_previous_version_and_retries(
+        self, mock_get: AsyncMock
+    ) -> None:
+        """A changed fiche that fails to download stays as it was, until it answers."""
+        first, _ = MinimalFicheScraper.FICHES
+        mock_get.return_value = fiche_response("Appartement à Carouge")
+        await self.scraper.fetch_listings()
+        self.scraper.index[first] = "v2"
+
+        def get(url: str) -> Mock:
+            if url == first:
+                raise httpx.RemoteProtocolError("Server disconnected")
+            return fiche_response()
+
+        mock_get.side_effect = get
+        with self.assertLogs("flatpulse.scrapers.base", "WARNING") as captured:
+            kept = await self.scraper.fetch_listings()
+        mock_get.reset_mock(side_effect=True)
+        mock_get.return_value = fiche_response("Appartement à Lancy")
+        retried = await self.scraper.fetch_listings()
+
+        self.assertEqual(
+            [listing.title for listing in kept], ["Appartement à Carouge"] * 2
+        )
+        [warning] = captured.output
+        self.assertIn(first, warning)
+        self.assertEqual(
+            [request.args[0] for request in mock_get.await_args_list],
+            [MinimalFicheScraper.base_url, first],
+        )
+        self.assertEqual(
+            [listing.title for listing in retried],
+            ["Appartement à Lancy", "Appartement à Carouge"],
+        )
+
+    @patch("httpx.AsyncClient.get", new_callable=AsyncMock)
+    async def test_fiche_without_version_is_always_downloaded(
+        self, mock_get: AsyncMock
+    ) -> None:
+        """An index that gives a fiche no version cannot tell it is unchanged."""
+        first, second = MinimalFicheScraper.FICHES
+        self.scraper.index[second] = None
+        mock_get.return_value = fiche_response()
+        await self.scraper.fetch_listings()
+        mock_get.reset_mock()
+
+        listings = await self.scraper.fetch_listings()
+
+        self.assertEqual(
+            [request.args[0] for request in mock_get.await_args_list],
+            [MinimalFicheScraper.base_url, second],
+        )
+        self.assertEqual(
+            [listing.external_url for listing in listings], [first, second]
+        )
 
     @patch("httpx.AsyncClient.get", new_callable=AsyncMock)
     async def test_failing_index_is_raised(self, mock_get: AsyncMock) -> None:

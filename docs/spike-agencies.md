@@ -115,8 +115,9 @@ Le payload ne porte ni description ni rue ; la fiche (`link`) les porte toutes l
 - Accès : `GET www.burger-sa.ch/sitemap.php` (liste des fiches) puis `GET /fr/louer/<slug>` (une fiche = une annonce)
 - Rendu : HTML statique ; le listing `/fr/louer` se charge en scroll infini (`infiniteScroll` sur `a.pagination__next`, lien jamais retiré, même sur les pages vides)
 - Pagination : aucune côté scraper — le sitemap liste toutes les fiches avec leur `lastmod`
-- Scraper : **HttpScraper** (sitemap XML + fiche HTML) : chaque poll lit le sitemap puis parse chaque fiche
-- Débit : pas de Crawl-delay · 4 req/min mesurés au spike ; un poll = sitemap + une requête par fiche (28 le 21.10.2026), à étaler par le `RateLimiter` (architecture §11)
+- Scraper : **FicheScraper** (sitemap XML + fiche HTML) : chaque poll lit le sitemap, puis les seules fiches nouvelles ou dont le `lastmod` a changé (cache en mémoire, #120)
+- Débit : pas de Crawl-delay · 4 req/min mesurés au spike ; premier poll = sitemap + une requête par fiche (28 le 21.10.2026), étalées par le `RateLimiter` (architecture §11) ; poll établi = le sitemap seul, plus une requête par fiche nouvelle ou modifiée
+- Signal de changement : l'URL absente du cache (annonce nouvelle) et le `lastmod` de l'entrée du sitemap (une version par jour, voir Pièges) ; une entrée sans `lastmod` est relue à chaque poll
 - Pas d'API ni de flux : ni RSS, ni JSON-LD ; les `api/…` du JS servent au formulaire de candidature
 - Volume : 27 fiches /fr/louer/ au sitemap, identiques aux 27 du scroll, toutes dans le canton de Genève — relevé le 21.10.2026 ; 43 fiches au 08.11.2026
 - Fixtures : `tests/fixtures/burger_sitemap.xml` (11 entrées `/fr/louer/` et une vente, sitemaps des 30.10 et 08.11.2026) et les 11 fiches correspondantes dans `tests/fixtures/burger/` (contact anonymisé) ; `burger_listing.html` (listing, spike du 22.09)
@@ -153,6 +154,7 @@ Le payload ne porte ni description ni rue ; la fiche (`link`) les porte toutes l
   comme `version` du cache (#120), il change une fois par jour : toutes les fiches sont
   relues une fois par jour (≈ 11 min), et une modification est vue le lendemain au plus
   tard. Une annonce nouvelle, elle, se reconnaît à son URL absente du cache, sans lui.
+  Une annonce publiée pendant cette relecture quotidienne attend sa fin.
 - Le canton n'est écrit nulle part sur la fiche : seul le NPA le donne.
 - « 0.0 pièces » affiché quand le nombre est inconnu : c'est `None`.
 - Le 21.10.2026, une fiche sur six enchaînées a coupé la connexion sans réponse (`RemoteProtocolError`), puis répondu normalement : raison de plus pour espacer les requêtes ; une fiche en échec est loguée et ignorée, sans faire tomber le poll.
@@ -162,8 +164,9 @@ Le payload ne porte ni description ni rue ; la fiche (`link`) les porte toutes l
 - Accès : `GET comptoir-immo.ch/location/?page=N` (toute l'offre, tous types et cantons), puis `GET` de chaque fiche détail
 - Rendu : HTML statique
 - Pagination : ?page=N, 24 par page — tri antichronologique par défaut
-- Scraper : **HttpScraper** — la carte ne sert qu'à trouver l'URL de la fiche, tout le reste vient de la fiche
-- Débit : Crawl-delay: 10 → rate_limit_rpm = 6, attendu avant **chaque** requête (catalogue et fiches) : un poll complet dure ≈ 1 h (16 pages + 375 fiches au 04.11.2026)
+- Scraper : **FicheScraper** — la carte donne l'URL de la fiche et sa version, tout le reste vient de la fiche
+- Débit : Crawl-delay: 10 → rate_limit_rpm = 6, attendu avant **chaque** requête (catalogue et fiches) : le premier poll après un démarrage dure ≈ 1 h (16 pages + 375 fiches au 04.11.2026) ; un poll établi ne relit que les pages du catalogue (≈ 2 min 40) et les fiches nouvelles ou modifiées (cache en mémoire, #120)
+- Signal de changement : le texte normalisé de la carte (`normalize-space()` de l'`article` : loyer, titre, type, pièces, surface, commune). Carte inconnue ou texte modifié → la fiche est relue ; carte disparue → l'annonce n'est plus rendue. Une retouche visible seulement sur la fiche (description, charges à loyer égal) n'est pas vue tant que la carte ne bouge pas
 - Canal de repli : GET /?post_type=property_for_rent&feed=rss2 — 24 items, pubDate réelles. Le sitemap property_for_rent-*.xml est périmé (lastmod 2025-11)
 - Volume : 375 biens en location au 04.11.2026 (Genève, Vaud, Valais)
 - Flux : +0 depuis 22.09.2026 07:25

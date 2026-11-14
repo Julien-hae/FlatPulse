@@ -51,12 +51,20 @@ class BurgerScraper(FicheScraper):
     base_url = "https://www.burger-sa.ch/sitemap.php"
     slug = "burger"
 
-    async def fiche_urls(self, client: httpx.AsyncClient) -> list[str]:
-        """The rental fiches listed in the sitemap."""
+    async def fiche_versions(self, client: httpx.AsyncClient) -> dict[str, str | None]:
+        """The rental fiches listed in the sitemap, versioned by their `lastmod`.
+
+        `lastmod` shows today's date on nearly every fiche, not the day it
+        changed: as a version, it has every fiche read again once a day. A new
+        fiche is known by its URL.
+        """
         sitemap = Selector(text=(await self._get(client, self.base_url)).text)
-        return sitemap.xpath(
-            "//*[local-name()='loc'][contains(text(), '/fr/louer/')]/text()"
-        ).getall()
+        return {
+            loc: entry.xpath("string(*[local-name()='lastmod'])").get() or None
+            for entry in sitemap.xpath("//*[local-name()='url']")
+            if "/fr/louer/"
+            in (loc := entry.xpath("string(*[local-name()='loc'])").get(""))
+        }
 
     def parse_fiche(self, node: Selector, url: str) -> Listing:
         """Extract the listing from a fiche page; `url`, from the sitemap, is its id."""
